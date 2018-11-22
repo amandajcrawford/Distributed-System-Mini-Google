@@ -9,23 +9,31 @@ Project number two of Distributed System course at Pitt for graduate students.
 
 
 1. Project Overview
-2. Hadoop Overview
+2. Mini Google Overview
+3. Hadoop
     1. Hadoop Phases
     2. Hadoop Cluster
-3. Hadoop Communication Paradigmns
+4. Hadoop Communication Paradigmns
     1. Job Tracker - Task Tracker
-4. HDFS Design Considerations
+5. HDFS Design Considerations
     1. HDFS Operations
     2. Components
 
 # Project Overview
 
 
-# Hadoop Overview
+# Mini Google Overview
+__1.__ Hadoop Implementation 
+* HDFS
 * MapReduce Engine
-* HDFS System 
-* Lucene - Index and Rank Search
-  
+* HBase / Lucene ( will not be used in project but influences designs)
+
+__2.__ Alternate Implementation 
+* Distributed File System - Data Storage and Batch Processing
+* MapReduce - Computing 
+* Inverted Index - Searching and Query Handling
+
+# Hadoop  
 ## Hadoop Phases 
 1. Map
 2. Sort/ Shuffle / Aggregate
