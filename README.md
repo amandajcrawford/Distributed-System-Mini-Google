@@ -87,6 +87,14 @@ http://www-scf.usc.edu/~shin630/Youngmin/files/HadoopInvertedIndexV5.pdf
 
 [Hadoop HDFS](https://hortonworks.com/blog/thinking-about-the-hdfs-vs-other-storage-technologies/)
 
+[Hadoop HDFS] (https://www.tutorialspoint.com/hadoop/hadoop_hdfs_overview.htm)
+
 [Searching HDFS](http://www.drdobbs.com/parallel/indexing-and-searching-on-a-hadoop-distr/226300241?pgno=3)
 
 [HBase](https://www.tutorialspoint.com/hbase/hbase_overview.htm)
+
+[MapReduce] (https://www.guru99.com/introduction-to-mapreduce.html)
+
+[MapReduce] (https://hci.stanford.edu/courses/cs448g/a2/files/map_reduce_tutorial.pdf)
+
+[MapReduce] (https://www.tutorialspoint.com/hadoop/hadoop_mapreduce.htm)
