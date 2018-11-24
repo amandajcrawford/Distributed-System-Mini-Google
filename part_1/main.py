@@ -7,12 +7,13 @@ def main():
 
     # Get Command Type: Index or Search
 
-    ## Index Command
+    ## Index Command {argument: input files}
     # Get input files from User
-    # Create a new Job using the job tracker
+    # Load HDFS 
+    # Create a new Job using the job tracker- 1. Load HDFS(name node1, chapter, books) 2. Map 3. shuffle 4. reduce (Load HDFS Output/ Name Node2) ( inverted index)
     # Return when finished
 
-    # Search Command
+    # Search Command (argument: keywords)
     # Add query to search queue
     # Find document keywords
     # Aggregate and rank results

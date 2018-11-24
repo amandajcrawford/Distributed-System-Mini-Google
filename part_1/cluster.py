@@ -36,13 +36,67 @@ class Node:
         self.ip = ip
 
 class WorkerNode(Node):
+    # Data
+    # task tracker
+    # data node 
+        # my directory is storing a specific partition
+    # mapper 
+    # reduce 
+    # shuffle 
+
+
+    # search
+
     pass
 
 class MasterNode(Node):
+
+    # communicated to the worker nodes - finding a new worker node
+    # job manager
+
+    # name node
+    # schedule
+
+
+    # search
     pass
 
+class IndexMaster:
+    # Ordering of Events
+    # 1. Cluster to worker nodes
+    # 2. Load HDFS and populate name node data
+        # partition input files
+        # assign a worker node to specific partition ( Directory of DataNodes and Data Partitions)
+        # give a task to the worker node to store
+        # waits for the worker node to give a success for storing data 
+    # 3. Scheduling mappers (dependent partitions, fault tolerance, speedup)
+    # 4. Schedule reducers 
+    # 5. Index Complete
+
+    def JobTracker(self):
+        pass
+    
+    def NameNode(self):
+        pass
+
+
+class SearchMaster:
+    def getKeywords(self):
+        pass
+    
+    def results():
+        pass
 if __name__ == '__main__':
     master_node = ("localhost", 7548)
     worker_nodes = [("localhost", 8761), ("localhost", 8762), ("localhost", 8763)]
     cluster = Cluster(master_node, worker_nodes, None, None)
     cluster.start()
+
+
+    '''
+    HDFS
+    - Read the input files 
+    - Create blocks of text size (128mb)
+    - Store thorse
+
+    '''

@@ -105,7 +105,10 @@ Sources:
 
 [HBase](https://www.tutorialspoint.com/hbase/hbase_overview.htm)
 
+[MAP Reduce Thorough](https://developer.yahoo.com/hadoop/tutorial/module4.html#wordcount)
 
+
+[Apache Map Reduce Partition](https://hadoop.apache.org/docs/stable/hadoop-mapreduce-client/hadoop-mapreduce-client-core/MapReduceTutorial.html)
 Tools 
 -----
 [RPYC](https://rpyc.readthedocs.io/en/latest/)
