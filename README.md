@@ -9,18 +9,27 @@ Project number two of Distributed System course at Pitt for graduate students.
 
 
 1. Project Overview
+    1. Map Reduce Design Considerations
 2. Mini Google Overview
 3. Hadoop
     1. Hadoop Phases
     2. Hadoop Cluster
 4. Hadoop Communication Paradigmns
     1. Job Tracker - Task Tracker
+    2. Map to Combine
+    3. Combine to Partition
+    4. Partion to Reducer
 5. HDFS Design Considerations
     1. HDFS Operations
     2. Components
 
 # Project Overview
-
+## Map Reduce Design Considerations
+* How do we assign work units to workers?
+* What if we have more work units than workers?
+* What if workers need to share partial results? 
+* How do we aggregate partial results?  How do we know all the workers have finished?
+*  What if workers fail?
 
 # Mini Google Overview
 __1.__ Hadoop Implementation 
@@ -63,7 +72,12 @@ __2.__ Alternate Implementation
     * Schedule and tracks jobs progress
     * Receives jobs from clients
 
+## Map to Combine
 
+
+## Combine to Partition
+
+## Partion to Reducer
 
 # HDFS Design Considerations
 ![hdfsarchitecture](/assets/hdfsarchitecture.gif)
@@ -81,7 +95,7 @@ Source: https://hadoop.apache.org/docs/r1.2.1/hdfs_design.html
 
 
 Sources:
-http://www-scf.usc.edu/~shin630/Youngmin/files/HadoopInvertedIndexV5.pdf
+[Map Reduce & Hadoop](http://www-scf.usc.edu/~shin630/Youngmin/files/HadoopInvertedIndexV5.pdf)
 
 [Hadoop YARN](https://hortonworks.com/blog/apache-hadoop-yarn-resourcemanager/)
 
@@ -90,3 +104,13 @@ http://www-scf.usc.edu/~shin630/Youngmin/files/HadoopInvertedIndexV5.pdf
 [Searching HDFS](http://www.drdobbs.com/parallel/indexing-and-searching-on-a-hadoop-distr/226300241?pgno=3)
 
 [HBase](https://www.tutorialspoint.com/hbase/hbase_overview.htm)
+
+
+Tools 
+-----
+[RPYC](https://rpyc.readthedocs.io/en/latest/)
+
+
+
+
+
