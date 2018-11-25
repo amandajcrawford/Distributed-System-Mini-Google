@@ -77,7 +77,7 @@ Input: A set of input document to partion
 #Reading from HDFS to Mappers
 
 
-# Index To Do
+# HDFS Index To Do
 # Partioning the inputs amongst processes and each process create blocks - Raphael
     # Output to Name Node: Port Number, Document_title, Partition Number 1, block
 
@@ -93,3 +93,23 @@ Input: A set of input document to partion
 
 
 # Search To Do
+
+
+
+
+# HDFS - hdfs.py
+
+### HDFS Class
+* HDFS 
+    * A Client Library to store data to HDFS
+    *  Exposed Methods
+        - open () - write to hdfs
+        - read () - read to hdfs
+        - close () - close connection to hdfs
+    
+* NameNode
+    * Responsible for returning a the data node file stream
+  
+* DataNode
+
+    

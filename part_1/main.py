@@ -6,7 +6,7 @@ def main():
         # Setup Servers For Index and Search
 
     # Get Command Type: Index or Search
-
+    
     ## Index Command {argument: input files}
     # Get input files from User
     # Load HDFS 

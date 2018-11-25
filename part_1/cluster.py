@@ -85,7 +85,7 @@ class SearchMaster:
     def getKeywords(self):
         pass
     
-    def results():
+    def results(self):
         pass
 
 if __name__ == '__main__':
