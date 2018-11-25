@@ -77,6 +77,7 @@ class IndexMaster:
         pass
     
     def NameNode(self):
+        # Port Number to handle hdfs requests
         pass
 
 
@@ -86,6 +87,7 @@ class SearchMaster:
     
     def results():
         pass
+
 if __name__ == '__main__':
     master_node = ("localhost", 7548)
     worker_nodes = [("localhost", 8761), ("localhost", 8762), ("localhost", 8763)]

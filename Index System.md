@@ -1,14 +1,15 @@
+# Index System Phases
+1. Load HDFS
+2. Mapper
+3. Reduce
+
 #  HDFS
 # Create/ Write
 # Read
 
-#Loading HDFS
+# Phase 1: Loading HDFS
 1. Take list of input files
 2. Splitting each document amongst the number of data nodes
-
-#Reading from HDFS to Mappers
-1. Block 
-
 
 # Storage Partitioning (Create/ Write Operation)
 1. By Size
@@ -59,4 +60,36 @@ D3 - P1:S2, P2:S2, P3:S2, P4:S2, P5:S1, P6:S1, P7:S1, P8:S3
 D4 - P1:S1
 D5 - P1:S3
 
+# Phase 1 System Design
 
+Worker Nodes  
+Input: A set of input document to partion
+1. Partion each document into block size
+2. For each block, contact namenode (master)
+3. Get the datastream from 
+
+
+
+
+
+
+
+#Reading from HDFS to Mappers
+
+
+# Index To Do
+# Partioning the inputs amongst processes and each process create blocks - Raphael
+    # Output to Name Node: Port Number, Document_title, Partition Number 1, block
+
+# NameNode and loading the blocks into DataNode - Amanda 
+    #  Input: Client Port Number, Document_title, Partition Number 1, block(text file)
+    #  Write the block to a specific data node D1/Blocks/document_title/block_text_file
+    #  Update the Phonebook 
+    #  Return a success/ failure to the process client
+
+# JobTracker/ Task Manager
+
+# Map/Reducer
+
+
+# Search To Do
