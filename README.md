@@ -120,7 +120,7 @@ Tools
 -----
 [RPYC](https://rpyc.readthedocs.io/en/latest/)
 
-
+[Multiprocessing](https://p16.praetorian.com/blog/multi-core-and-distributed-programming-in-python)
 
 
 
