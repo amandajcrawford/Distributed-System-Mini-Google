@@ -93,6 +93,11 @@ class MasterNode:
         return arrayOfFilesAndSize
 
     def distributeJobToMappers(self,arrayOfDictionariesOfFilesPaths):
+        """
+            Function receives an array of dictionaries where each dictionary has the form:
+            'path/to/file': int number_of_lines}
+            The function then distributes each block to each Mapper
+        """
         for index,i in enumerate(arrayOfDictionariesOfFilesPaths):
             k = i
             fi = list(k.keys())[0]
@@ -106,7 +111,6 @@ class MasterNode:
                 print("Worker ",worker," will receive file: ",fi," starting at line ",k," ending at line ",y)
                 lines-=t
                 worker+=1
-            # os.system("gnome-terminal -e 'bash -c \"python client.py %s %s %s %s; exec bash\"'"%(serverAddresses[i].get('ip'),serverAddresses[i].get('port'),y,sys.argv[2]))
             print("Worker ",worker," will receive file: ",fi," starting at line ",y," ending at line ",(list(i.values())[0]))
 
     def startServer(self):
