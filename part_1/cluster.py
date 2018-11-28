@@ -115,7 +115,7 @@ class MasterNode(ProcessNode):
 class WorkerNode(ProcessNode):
     def __init__(self, host, port, master_addr):
         self.master_addr = master_addr
-        return super(WorkerNode, self).__init__(host, port)
+        super(WorkerNode, self).__init__(host, port)
         self.register()
 
     def register(self):
@@ -126,7 +126,7 @@ class WorkerNode(ProcessNode):
         events = selectors.EVENT_READ | selectors.EVENT_WRITE
         data = RPCMessageBuilder().add_registration_message(self.port)
         sel.register(sock, events, data=data)
-        logging.info('Worker Node %d connected master node'%self.port)
+        logging.info('Worker Node %s connected to master node'%str(self.port))
 
 class IndexWorkerNode(WorkerNode):
     def start_worker(self):
@@ -187,7 +187,9 @@ class IndexCluster:
             node.join()
 
 
-
+#TODO: Add Message Parser
+class RPCMessageParser:
+    pass
 class RPCMessageBuilder:
     FORMAT = "RPC| %s | %s"
     def __init__(self, connid=0, messages=[], recv_total=0, outb="" ):
@@ -208,7 +210,7 @@ class RPCMessageBuilder:
         return data
 
     def add_registration_message(self, port ):
-        message = b"RPC | WORKER | CONNECT"
+        message = bytes("RPC | WORKER | CONNECT| %s"%str(port), 'utf-8')
         self.messages.append(message)
         self.connid += 1
 
