@@ -122,5 +122,5 @@ Tools
 
 [Multiprocessing](https://p16.praetorian.com/blog/multi-core-and-distributed-programming-in-python)
 
-
+[Inverted Index](https://algs4.cs.princeton.edu/code/edu/princeton/cs/algs4/FileIndex.java.html)
 

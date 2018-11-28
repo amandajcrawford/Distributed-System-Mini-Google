@@ -1,5 +1,8 @@
 
 import logging 
+import argparse
+
+logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.DEBUG)
 
 def main():
     # Get Cluster Node Count 
@@ -21,7 +24,4 @@ def main():
     return
 
     
-if __name__ == '__main__':
-    logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.DEBUG)
-    main()
-    
+

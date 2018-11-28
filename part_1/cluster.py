@@ -1,186 +1,222 @@
+import atexit
+import concurrent.futures
 import logging
-import socket
+import logging.handlers
 import multiprocessing
-import os, time, math
-import numpy as np
+import os
+import queue
+import selectors
+import socket
+import sys
+import types
+import time
+from multiprocessing import Manager, Process, current_process, Queue
 
 
-class Cluster:
+def create_logger():
+    multiprocessing.log_to_stderr()
+    logger = multiprocessing.get_logger()
+    logger.setLevel(logging.DEBUG)
+ 
+    fh = logging.FileHandler("index-%s.log"%str(time.time()), mode='w+')
+    fh.setLevel(logging.DEBUG)
+    fmt = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    formatter = logging.Formatter(fmt)
+    fh.setFormatter(formatter)
+ 
+    logger.addHandler(fh)
+    return logger
 
+logger = create_logger()
+#Source: https://www.shanelynn.ie/using-python-threading-for-multiple-results-queue/
+#https://realpython.com/python-sockets/
+
+class ProcessNode(Process):
+    def __init__(self, host, port, start_handler=None, conn_handler=None, req_handler=None, data=None):
+        self.host = host
+        self.port = port
+        self.handle_connection = None
+        self.handle_request = None
+        self.start_handler = None
+        if callable(conn_handler):
+            self.handle_connection = conn_handler
+        if callable(req_handler):
+            self.handle_request = req_handler
+        if callable(start_handler):
+            self.start_handler = start_handler
+        self.data = data
+        super(ProcessNode, self).__init__()
+
+    def run(self):
+        self.selector = selectors.DefaultSelector()
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.bind((self.host, self.port))
+        self.sock.listen()
+        logger.info('listening on %s %s'%(self.host, self.port))
+        self.sock.setblocking(False)
+        self.selector.register(self.sock, selectors.EVENT_READ, data=self.data)
+        atexit.register(self.shutdown)
+
+        while True:
+            events = self.selector.select(timeout=None)
+            for key, mask in events:
+                if key.data is None:
+                    self.accept_wrapper(key.fileobj)
+                else:
+                    self.service_connection(key, mask)
+
+    def accept_wrapper(self, sock):
+        conn, addr = sock.accept()  # Should be ready to read
+        logger.info('accepted connection from '+str(addr))
+        conn.setblocking(False)
+        data = types.SimpleNamespace(addr=addr, inb=b'', outb=b'')
+        events = selectors.EVENT_READ | selectors.EVENT_WRITE
+        self.selector.register(conn, events, data=data)
+        if self.handle_connection is not None:
+            self.handle_connection(conn, addr, data)
+
+    def service_connection(self, key, mask):
+        sock = key.fileobj
+        data = key.data
+        if mask & selectors.EVENT_READ:
+            recv_data = sock.recv(1024)  # Should be ready to read
+            if recv_data:
+                logger.info('received '+repr(recv_data)+ ' from connection '+ str(data.addr))
+                data.outb += recv_data
+                if self.handle_request is not None:
+                    self.handle_request(sock, data, recv_data)
+            else:
+                logger.info('closing connection ' + str(data.addr))
+                self.selector.unregister(sock)
+                sock.close()
+        if mask & selectors.EVENT_WRITE:
+            if data.outb:
+                logger.info("responding "+ repr(data.outb)+" to "+ str(data.addr))
+                sent = sock.send(data.outb)  # Should be ready to write
+                data.outb = data.outb[sent:]
+
+    def shutdown(self):
+        self.selector.close()
+        self.sock.shutdown(socket.SHUT_RDWR)
+        self.sock.close()
+
+
+class MasterNode(ProcessNode):
+    def __init__(self, host, port):
+        self.worker_address = {}
+        self.num_workers = 0
+        super(MasterNode, self).__init__(host, port)
+
+        if callable(self.start_master):
+            self.start_master()
+        else:
+            NotImplementedError('start_master not yet implemented')
+
+class WorkerNode(ProcessNode):
+    def __init__(self, host, port, master_addr):
+        self.master_addr = master_addr
+        return super(WorkerNode, self).__init__(host, port)
+        self.register()
+
+    def register(self):
+        sel = selectors.DefaultSelector()
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.setblocking(False)
+        sock.connect_ex(self.master_addr)
+        events = selectors.EVENT_READ | selectors.EVENT_WRITE
+        data = RPCMessageBuilder().add_registration_message(self.port)
+        sel.register(sock, events, data=data)
+        logging.info('Worker Node %d connected master node'%self.port)
+
+class IndexWorkerNode(WorkerNode):
+    def start_worker(self):
+        pass
+class IndexMasterNode(MasterNode):
+    def start_master(self):
+        pass
+class IndexCluster:
     Clustered = 2
     Non_Clustered = 3
 
     Started = 4
     Finished = 5
 
-    def __init___(
-        self, master_node=None, worker_nodes=None, master_func=None, worker_func=None
-    ):
-        if not master_node:
-            master_node = ("localhost", 8956)
-        if not worker_nodes:
+    def __init__(self, master_addr, worker_num):
+        if not master_addr:
+            self.master_addr = ("localhost", 8956)
+        else:
+            self.master_addr = master_addr
+
+        if not worker_num:
             return RuntimeError("Worker nodes not defined")
 
         self.cluster_status = self.Non_Clustered
-        self.nodes = {"master": master_node, "workers": worker_nodes}
+        self.nodes = {"master": master_addr, "workers": []}
+        self.worker_num = worker_num
+
 
     def start(self):
+        nodes = []
+
         # Create Master Node'
-        master = self.nodes[self.nodes["master"]]
-        self.master = MasterNode(master)
+        master = IndexMasterNode(self.master_addr[0], self.master_addr[1] )
+        nodes.append(master)
+        master.start()
 
-        # Create Worker Nodes
-        self.workers = {}
-        for worker in self.nodes["workers"]:
-            node = WorkerNode(worker)
-            self.workers[worker] = node
-
-
-class Node:
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
-    def __init__(self, ip, port):
-        self.port = int(port)
-        self.ip = ip
-        self.sock.bind(("", port))
-        self.sock.listen(5)
+        addr_list = []
+        with open(os.path.join(os.path.dirname(__file__), 'hosts.txt'), 'r') as f:
+            for line in f:
+                l = line.strip().split(' ')
+                addr = tuple(l)
+                addr_list.append(addr)
 
 
-class WorkerNode(Node):
-    # Data
-    # task tracker
-    # data node
-    # my directory is storing a specific partition
-    # mapper
-    # reduce
-    # shuffle
+        worker_addr = []
+        for i in range(self.worker_num):
+            addr = addr_list[i]
+            worker_addr.append(addr)
+            host = addr[0]
+            port = int(addr[1])
+            node = IndexWorkerNode(host, port, self.master_addr)
+            nodes.append(node)
+            node.start()
 
-    # search
+        self.nodes['workers'] = worker_addr
 
-    pass
-
-
-class MasterNode:
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    # The line above should change to a list containing the address of each worker
-    # instead of a fix value, #workers will be -> workers = len(list)
-    workers = 4
-
-    def __init__(self, ip, port):
-        self.port = int(port)
-        self.ip = ip
-        self.sock.bind((ip, port))
-        self.sock.listen(5)
-
-    def populateArrayOfFilesAndSize(self,path):
-        files = os.listdir(os.path.abspath(path))
-        arrayOfFilesAndSize = np.empty([1, 0])
-        for iFile in files:
-            pathToFile = os.path.join(
-                path,
-                iFile,
-            )
-            f = open(os.path.abspath(pathToFile), encoding="ISO-8859-1")
-            lines = 0
-            buf_size = 1024 * 1024
-            read_f = f.read
-            buf = read_f(buf_size)
-            while buf:
-                lines += buf.count("\n")
-                buf = read_f(buf_size)
-            f.close()
-            arrayOfFilesAndSize = np.append(arrayOfFilesAndSize, [{pathToFile: lines}])
-        return arrayOfFilesAndSize
-
-    def distributeJobToMappers(self,arrayOfDictionariesOfFilesPaths):
-        """
-            Function receives an array of dictionaries where each dictionary has the form:
-            'path/to/file': int number_of_lines}
-            The function then distributes each block to each Mapper
-        """
-        for index,i in enumerate(arrayOfDictionariesOfFilesPaths):
-            k = i
-            fi = list(k.keys())[0]
-            k = list(k.values())[0]
-            lines = k
-            t = math.ceil(k/self.workers)
-            worker,y = 0,0
-            while (lines - t) > 0:
-                k = y
-                y += t
-                print("Worker ",worker," will receive file: ",fi," starting at line ",k," ending at line ",y)
-                lines-=t
-                worker+=1
-            print("Worker ",worker," will receive file: ",fi," starting at line ",y," ending at line ",(list(i.values())[0]))
-
-    def startServer(self):
-        while True:
-            c, addr = self.sock.accept()
-            data, address = c.recvfrom(4096)
-            request = data.decode()
-            #Client request for indexing a given path
-            #The request will be as follow:
-            """
-                RPC:/root/user/path/to/where/directory/is
-            """
-            if request[:3] == "RPC":
-                arrayOfFilesAndSize = self.populateArrayOfFilesAndSize(request[4:])
-                    # is it better to read then distribute the blocks, or distribute while reading?
-                self.distributeJobToMappers(arrayOfFilesAndSize) 
-            c.close()
-
-    # communicated to the worker nodes - finding a new worker node
-    # job manager
-
-    # name node
-    # schedule
-
-    # search
-    # pass
+        for node in nodes:
+            node.join()
 
 
-class IndexMaster:
-    # Ordering of Events
-    # 1. Cluster to worker nodes
-    # 2. Load HDFS and populate name node data
-    # partition input files
-    # assign a worker node to specific partition ( Directory of DataNodes and Data Partitions)
-    # give a task to the worker node to store
-    # waits for the worker node to give a success for storing data
-    # 3. Scheduling mappers (dependent partitions, fault tolerance, speedup)
-    # 4. Schedule reducers
-    # 5. Index Complete
 
-    def JobTracker(self):
-        pass
+class RPCMessageBuilder:
+    FORMAT = "RPC| %s | %s"
+    def __init__(self, connid=0, messages=[], recv_total=0, outb="" ):
+        self.connid = connid
+        self.messages = messages
+        self.recv_total = recv_total
+        self.outb = outb
 
-    def NameNode(self):
-        # Port Number to handle hdfs requests
-        pass
+    def build(self):
+        msg_total = sum(len(m) for m in self.messages)
+        data = types.SimpleNamespace(
+        connid=self.connid,
+        msg_total= msg_total,
+        recv_total=self.recv_total,
+        messages=list(self.messages),
+        outb= bytes(self.outb,'utf-8'),
+        )
+        return data
 
+    def add_registration_message(self, port ):
+        message = b"RPC | WORKER | CONNECT"
+        self.messages.append(message)
+        self.connid += 1
 
-class SearchMaster:
-    def getKeywords(self):
-        pass
-
-    def results(self):
-        pass
+    def clear(self):
+        self.messages = []
+        self.connid = 0
 
 
 if __name__ == "__main__":
-    Master = MasterNode('127.0.0.1',45000)
-    Master.startServer()
-    # print(Master.port)
-    # master_node = ("localhost", 7548)
-    # worker_nodes = [("localhost", 8761), ("localhost", 8762), ("localhost", 8763)]
-    # cluster = Cluster(master_node, worker_nodes, None, None)
-    # cluster.start()
-
-    """
-    HDFS
-    - Read the input files 
-    - Create blocks of text size (128mb)
-    - Store thorse
-
-    """
-
+   inx = IndexCluster(('localhost', 9803), 2)
+   inx.start()

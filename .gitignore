@@ -1,2 +1,12 @@
 
 .vscode/settings.json
+.pytest_cache/v/cache/nodeids
+.pytest_cache/v/cache/stepwise
+.vscode/launch.json
+*.pyc
+*.pyc
+*.pyc
+part_1/__pycache__/hdfs.cpython-36.pyc
+part_1/__pycache__/__init__.cpython-36.pyc
+*.log
+*.pyc
