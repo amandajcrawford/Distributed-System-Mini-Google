@@ -185,7 +185,14 @@ class MessageParser:
             type="",
             action="",
             port=0,
-            host=""
+            host="",
+            map_dir="",
+            map_range_start=0,
+            map_range_end=0,
+            red_dir="",
+            red_start_letter = "",
+            red_end_letter = "",
+            output_dir=""
         )
 
     def parse(self, message):
@@ -219,12 +226,28 @@ class MessageParser:
 
     def parse_master_message(self):
         ''' Master Messages should be defined here '''
-        pass
+        command = self.arr[4]
+
+        if command == 'map':
+            self.parsed.action = 'map'
+            self.parsed.map_dir = self.arr[5]
+            range = self.arr[6].split("-")
+            self.parsed.map_range_start = range[0]
+            self.parsed.map_range_end = range[1]
+        elif command == 'reduce':
+            self.parsed.action = 'reduce'
+            self.parsed.dir = self.arr[5]
+            range = self.arr[6].split("-")
+            self.parsed.red_start_letter = range[0]
+            self.parsed.red_end_letter = range[1]
+        else:
+            self.parsed.action = command
+
 
     def parse_worker_message(self):
         ''' Worker Messages should be defined here '''
         command = self.arr[4]
-        if command.lower() == 'connect':
+        if command == 'connect':
             self.parsed.action = 'connect'
 
     def parse_client_message(self):
@@ -255,21 +278,23 @@ class MessageBuilder:
         )
         return data
 
-    ''' WORKER NODE MESSAGES '''
+    ''' INDEX WORKER NODE MESSAGES '''
     def add_registration_message(self, host, port ):
         # used for worker nodes to connect to master node
         message = bytes("RPC | WORKER | %s | %s | CONNECT "%(host, str(port)), 'utf-8')
         self.messages.append(message)
         self.connid += 1
 
-    ''' MASTER NODE MESSAGES '''
-    def add_task_map_message(self,host, port, path, range=""):
+    ''' INDEX MASTER NODE MESSAGES '''
+    def add_task_map_message(self,host, port, path, range_start="", range_end=""):
+        range = "%s-%s"%(str(range_start), str(range_end))
         # used for master to send a task message to worker node
         message = bytes("RPC | MASTER | %s| %s | MAP | %s | %s"%(host, str(port), path, str(range)) , 'utf-8')
         self.messages.append(message)
         self.connid += 1
-    
-    def add_task_reduce_message(self,host, port, path, range=""):
+
+    def add_task_reduce_message(self,host, port, path, range_start="", range_end=""):
+        range = "%s-%s"%(str(range_start), str(range_end))
         # used for master to send a task message to worker node
         message = bytes("RPC | MASTER | %s| %s | REDUCE | %s | %s"%(host, str(port), path, str(range)) , 'utf-8')
         self.messages.append(message)

@@ -35,7 +35,7 @@ class IndexWorkerNode(WorkerNode):
         parsed = parser.parse(received)
 
         # Get task and add to queue
-        
+
 
 
         # Pop task from queue and complete
@@ -134,6 +134,18 @@ class IndexMasterNode(MasterNode):
                 lines-=t
                 worker+=1
             print("Worker ",worker," will receive file: ",fi," starting at line ",y," ending at line ",(list(i.values())[0]))
+
+            # # worker range
+            # range = str(y)+" - "+ str((list(i.values())[0]))
+
+            # # Create map task for worker
+            # builder = MessageBuilder(messages=[])
+            # builder.add_task_map_message(self.host, self.port, fi, range )
+            # message = builder.build()
+
+            # # Send task to worker
+            # worker_conn = self.worker_conns[self.worker]
+            # worker_conn.send(message.outb) # Gets the converted outbound message
 
 class IndexCluster:
 
