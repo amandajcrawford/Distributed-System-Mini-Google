@@ -255,15 +255,23 @@ class MessageBuilder:
         )
         return data
 
+    ''' WORKER NODE MESSAGES '''
     def add_registration_message(self, host, port ):
         # used for worker nodes to connect to master node
         message = bytes("RPC | WORKER | %s | %s | CONNECT "%(host, str(port)), 'utf-8')
         self.messages.append(message)
         self.connid += 1
 
-    def add_task_message(self, port, task, path, range=""):
+    ''' MASTER NODE MESSAGES '''
+    def add_task_map_message(self,host, port, path, range=""):
         # used for master to send a task message to worker node
-        message = bytes("RPC | MASTER | %s| %s | %s"%(str(port), task, path, str(range)) , 'utf-8')
+        message = bytes("RPC | MASTER | %s| %s | MAP | %s | %s"%(host, str(port), path, str(range)) , 'utf-8')
+        self.messages.append(message)
+        self.connid += 1
+    
+    def add_task_reduce_message(self,host, port, path, range=""):
+        # used for master to send a task message to worker node
+        message = bytes("RPC | MASTER | %s| %s | REDUCE | %s | %s"%(host, str(port), path, str(range)) , 'utf-8')
         self.messages.append(message)
         self.connid += 1
 

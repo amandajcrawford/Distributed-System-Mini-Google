@@ -19,11 +19,11 @@ class TaskTracker:
 
     # Combine/Shuffle Task:
     # # of shufflers/ mappers
-    # call shufflers with input 
+    # call shufflers with input
 
     # Reduce/Task
     # Find the input to each reducer
-    # Run the reducer 
+    # Run the reducer
 
 
     pass

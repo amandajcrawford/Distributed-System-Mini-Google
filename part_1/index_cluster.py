@@ -13,11 +13,34 @@ from base import MasterNode, WorkerNode, MessageBuilder, MessageParser, logger
 
 
 class IndexWorkerNode(WorkerNode):
-    def start_worker(self):
-        pass
+    # TASK
+    FREE = 9 # Available to start another task
+    MAP = 10
+    REDUCE = 11
 
-    # def handle_request(self, conn, addr, data):
-    #     print(data)
+    # Task States
+    COMPLETED = 5
+    NOT_COMPLETED = 6
+
+    def start_worker(self):
+        self.curr_task = self.FREE
+        self.task_status = self.NOT_COMPLETED
+        self.task_queue = queue.Queue
+
+    def handle_request(self, conn, addr, received):
+        
+        # Parse Message
+        received = received.decode("utf-8")
+        parser = MessageParser()
+        parsed = parser.parse(received)
+
+        # Get task and add to queue
+        
+
+
+        # Pop task from queue and complete
+        
+
 
 class IndexMasterNode(MasterNode):
     # Job Stages
