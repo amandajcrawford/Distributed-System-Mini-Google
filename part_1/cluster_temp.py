@@ -130,9 +130,11 @@ class MasterNode:
             if request[:3] == "RPC":
                 arrayOfFilesAndSize = self.populateArrayOfFilesAndSize(request[4:])
                     # is it better to read then distribute the blocks, or distribute while reading?
-                self.distributeJobToMappers(arrayOfFilesAndSize) 
+                self.distributeJobToMappers(arrayOfFilesAndSize)
             c.close()
-
+    
+    def send_task_to_workers(self):
+        
     # communicated to the worker nodes - finding a new worker node
     # job manager
 
