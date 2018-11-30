@@ -54,6 +54,10 @@ class ProcessNode(Process):
         self.selector.register(self.sock, selectors.EVENT_READ, data=self.data)
         atexit.register(self.shutdown)
 
+        # Call child start function for any pre server interaction
+        if hasattr(self, 'handle_start') and callable(self.handle_start):
+            self.handle_start()
+
         while True:
             events = self.selector.select(timeout=None)
             for key, mask in events:
@@ -81,7 +85,6 @@ class ProcessNode(Process):
             recv_data = sock.recv(1024)  # Should be ready to read
             if recv_data:
                 logger.info('received '+repr(recv_data)+ ' from connection '+ str(data.addr))
-
                 # Handle request using child method
                 if hasattr(self, 'handle_request') and callable(self.handle_request):
                     data.outb = self.handle_request(sock, data, recv_data)
@@ -155,22 +158,23 @@ class WorkerNode(ProcessNode):
         self.master_addr = master_addr
         self.master_conn = None
         super(WorkerNode, self).__init__(host, port)
-        self.connect_to_master()
         if hasattr(self, 'start_worker') and callable(self.start_worker):
                 self.start_worker()
 
-
-    def connect_to_master(self):
+    def handle_start(self):
         ''' Register as a worker to the master node using self.master_addr '''
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.setblocking(False)
         sock.connect_ex(self.master_addr)
+        events = selectors.EVENT_READ | selectors.EVENT_WRITE
 
         # creates a registration message to send to master node
         message = MessageBuilder(messages=[])
         message.add_registration_message(self.host, self.port)
         data = message.build()
         messages = data.outb
+
+        self.selector.register(sock, events, data=data)
 
         # add data to be sent to master
         sock.send(messages)
@@ -265,11 +269,13 @@ class MessageBuilder:
         self.messages = messages
         self.recv_total = recv_total
         self.outb = outb
+        self.addr = ""
 
     def build(self):
         msg_total = sum(len(m) for m in self.messages)
         self.outb = b"|".join(self.messages)
         data = types.SimpleNamespace(
+            addr = ''.join(self.addr) ,
             connid=self.connid,
             msg_total= msg_total,
             recv_total=self.recv_total,
@@ -280,6 +286,7 @@ class MessageBuilder:
 
     ''' INDEX WORKER NODE MESSAGES '''
     def add_registration_message(self, host, port ):
+        self.addr = (host, str(port))
         # used for worker nodes to connect to master node
         message = bytes("RPC | WORKER | %s | %s | CONNECT "%(host, str(port)), 'utf-8')
         self.messages.append(message)
@@ -287,6 +294,7 @@ class MessageBuilder:
 
     ''' INDEX MASTER NODE MESSAGES '''
     def add_task_map_message(self,host, port, path, range_start="", range_end=""):
+        self.addr = (host, str(port))
         range = "%s-%s"%(str(range_start), str(range_end))
         # used for master to send a task message to worker node
         message = bytes("RPC | MASTER | %s| %s | MAP | %s | %s"%(host, str(port), path, str(range)) , 'utf-8')
@@ -294,6 +302,7 @@ class MessageBuilder:
         self.connid += 1
 
     def add_task_reduce_message(self,host, port, path, range_start="", range_end=""):
+        self.addr = (host, str(port))
         range = "%s-%s"%(str(range_start), str(range_end))
         # used for master to send a task message to worker node
         message = bytes("RPC | MASTER | %s| %s | REDUCE | %s | %s"%(host, str(port), path, str(range)) , 'utf-8')
