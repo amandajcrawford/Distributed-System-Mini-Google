@@ -2,7 +2,7 @@ import argparse
 import socket
 from index_cluster import IndexClient
 from os import path
-
+from pathlib import Path
 '''
     Indexer.py
     Usage: python indexer.py  -fs [input_directory] -nodes [ds_nodes] -host [ds_host] -port [master_port]
@@ -12,7 +12,7 @@ from os import path
     -port: {optional} port address for the master server, will also be used for the worker nodes
     -host: {optional} host address for the master server
 '''
-INDEX_DIR = path.join(path.dirname(__file__), 'input')
+INDEX_DIR = path.join(Path(path.dirname(__name__)).parent, 'inputs')
 NUM_NODES = 4
 HOST = 'localhost'
 PORT = 9857
@@ -22,10 +22,13 @@ def set_index_dir(parser, args):
     global INDEX_DIR
     if args.dir is not None:
         dir = args.dir
+        print( path.join(Path(path.dirname(path.abspath(__name__))).parent,dir))
         if path.isdir(dir):
             INDEX_DIR = dir
-        elif path.isdir(path.join(path.dirname(path.abspath(__name__)),dir)):
-            INDEX_DIR = path.join(path.dirname(path.abspath(__name__)),dir)
+        elif path.isdir(path.join(path.dirname(path.abspath(__file__)),dir)):
+            INDEX_DIR = path.join(path.dirname(path.abspath(__file__)),dir)
+        elif path.isdir(path.join(Path(path.dirname(path.abspath(__name__))).parent,dir)):
+            INDEX_DIR = path.join(Path(path.dirname(path.abspath(__name__))).parent,dir)
         else:
             parser.error("Directory not found, please enter the absolute path")
 

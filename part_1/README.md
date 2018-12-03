@@ -2,7 +2,7 @@
 
 ## 1.1. How to Run
 
-python indexer.py -fs [file_name] -nodes [nodes] -host [system_host] -port [master_port]
+```python indexer.py -fs [input_directory] -nodes [nodes] -host [system_host] -port [master_port]```
 
 # 2. Search System
 

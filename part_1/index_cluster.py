@@ -1,16 +1,16 @@
-import multiprocessing
+import asyncio
 import os
+import pathlib
+import shutil
 import queue
 import selectors
 import socket
 import sys
-import time
-import types
 import numpy as np
 import math
-from multiprocessing import Manager, Process, Queue, current_process
+from multiprocessing import Process, JoinableQueue, current_process
 from base import MasterNode, WorkerNode, MessageBuilder, MessageParser, logger
-
+from map_reduce import MapReduceProcess
 
 class IndexWorkerNode(WorkerNode):
     # TASK
@@ -21,24 +21,67 @@ class IndexWorkerNode(WorkerNode):
     # Task States
     COMPLETED = 5
     NOT_COMPLETED = 6
+    def __init__(self, host, port, worker_num, map_dir, red_dir):
+        self.map_dir = map_dir
+        self.red_dir = red_dir
+        return super(IndexWorkerNode, self).__init__(host, port, worker_num)
 
     def start_worker(self):
         self.curr_task = self.FREE
         self.task_status = self.NOT_COMPLETED
-        self.task_queue = queue.Queue
+        # loop = asyncio.get_event_loop()
+        # start map reduce process  that pulls from task queue
+        task_queue = JoinableQueue()
+        # self.map_reduce_engine = MapReduceProcess(task_queue)
+        # self.map_reduce_engine.start()
+        # self.map_reduce_engine.join()
+        self.task_queue = task_queue
 
     def handle_request(self, conn, addr, received):
-        
+
         # Parse Message
         received = received.decode("utf-8")
         parser = MessageParser()
         parsed = parser.parse(received)
 
         # Get task and add to queue
+        task = parsed.action
+        if task == 'map':
+            self.handle_map_task(parsed)
 
+        if task == 'reduce':
+            self.handle_reduce_task(parsed)
 
+    def handle_map_task(self, message):
+        dir = message.map_dir,
+        start = message.map_range_start,
+        end = message.map_range_end
+        mappers = 3
+        task_obj = {
+            task:'map',
+            mappers: mappers,
+            dir:self.map_dir,
+            start:start,
+            end: end
+        }
+        # May need to handle some setup work
+        self.task_queue.put_nowait(task_obj)
 
-        # Pop task from queue and complet
+    def handle_reduce_task(self, message):
+        dir = message.red_dir,
+        start = message.red_range_start,
+        end = message.red_range_end
+        reducers = 3
+
+        task_obj = {
+            task:'reduce',
+            reducers: reducers,
+            dir: self.red_dir,
+            start:start,
+            end: end
+        }
+        # May need to handle some  setup work
+        self.task_queue.put_nowait(task_obj)
 
 
 class IndexMasterNode(MasterNode):
@@ -90,7 +133,7 @@ class IndexMasterNode(MasterNode):
                 self.job_status = self.IN_PROGRESS
                 arrayOfFilesAndSize = self.populateArrayOfFilesAndSize(self.index_dir)
                 # is it better to read then distribute the blocks, or distribute while reading?
-                # We can read then distribute
+                # We should read then distribute
                 self.distributeJobToMappers(arrayOfFilesAndSize)
 
     def populateArrayOfFilesAndSize(self, path):
@@ -141,11 +184,11 @@ class IndexMasterNode(MasterNode):
             builder.add_task_map_message(self.host, self.port, fi, y, (list(i.values())[0]) )
             message = builder.build()
 
-            # # Send task to worker
+            # # Send task to worker by first getting the worker socket channel
             worker_conn = self.worker_conns[worker_keys[worker]]
             print(worker_conn)
             logger.info('Sending worker message %s'% str(message.outb))
-            # Gets the converted outbound message
+            # Gets the converted outbound message and send to the worker
             worker_conn.send(message.outb)
 
 class IndexCluster:
@@ -165,9 +208,22 @@ class IndexCluster:
         self.worker_num = worker_num
         self.index_dir = index_dir
 
+    def setup_index_dir(self):
+        # Create temp directory for map jobs
+        self.index_map = os.path.join(os.path.dirname(__file__),'indexer/map' )
+        shutil.rmtree(self.index_map, ignore_errors=True)
+        pathlib.Path(self.index_map).mkdir(parents=True, exist_ok=True)
+
+        # Create directory for reduce job and inverted index
+        self.index_reduce = os.path.join(os.path.dirname(__file__),'indexer/index' )
+        shutil.rmtree(self.index_reduce, ignore_errors=True)
+        pathlib.Path(self.index_reduce).mkdir(parents=True, exist_ok=True)
 
     def start(self):
         nodes = []
+
+        # Setup index directory for map reduce task
+        self.setup_index_dir()
 
         # Create Master Node and start process
         master = IndexMasterNode(self.master_addr[0], self.master_addr[1] , self.worker_num, self.index_dir)
@@ -192,7 +248,7 @@ class IndexCluster:
             worker_addr.append(addr)
             host = addr[0]
             port = int(addr[1])
-            node = IndexWorkerNode(host, port, self.master_addr)
+            node = IndexWorkerNode(host, port, self.master_addr, self.index_map, self.index_reduce)
             nodes.append(node)
             node.start()
 

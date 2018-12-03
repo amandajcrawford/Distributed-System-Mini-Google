@@ -18,7 +18,7 @@ import socket
 import sys
 import time
 import types
-from multiprocessing import Manager, Process, Queue, current_process
+from multiprocessing import Process, current_process
 
 
 def create_logger():
