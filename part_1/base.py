@@ -93,6 +93,9 @@ class ProcessNode(Process):
             else:
                 logger.info('closing connection ' + str(data.addr))
                 self.selector.unregister(sock)
+
+                if hasattr(self, 'handle_disconnect') and callable(self.handle_disconnect):
+                    self.handle_disconnect(data, sock)
                 sock.close()
         if mask & selectors.EVENT_WRITE:
             if data.outb:
@@ -153,6 +156,10 @@ class MasterNode(ProcessNode):
                         self.worker_status = self.PARTIAL_CONNECTED
             return
 
+    def handle_disconnect(self, conn, data):
+        # try to find the worker that was disconnected
+        # need to remove connection and can try to reconnect? or restart?
+        pass
 class WorkerNode(ProcessNode):
     def __init__(self, host, port, master_addr):
         self.master_addr = master_addr
@@ -181,6 +188,10 @@ class WorkerNode(ProcessNode):
         logging.info('Worker Node %s connected to master node'%str(self.port))
         self.master_conn = sock
 
+    def handle_disconnect(self, conn, data):
+        # master can reconnect again or should I shutdown?
+        pass
+
 
 class MessageParser:
     ''' Parse MessageBuilder messages '''
@@ -190,13 +201,25 @@ class MessageParser:
             action="",
             port=0,
             host="",
+
+            # Index Related Keywords
             map_dir="",
             map_range_start=0,
             map_range_end=0,
             red_dir="",
             red_start_letter = "",
             red_end_letter = "",
-            output_dir=""
+            output_dir="",
+
+            # Search Related Keywords
+            keywords = [],
+            status = "",
+            results={},
+
+            # Only if data was unparsable
+            unparsed = [],
+            clientid = None
+
         )
 
     def parse(self, message):
@@ -211,8 +234,8 @@ class MessageParser:
         self.arr = arr
 
         #Get the sender type and parse based on type
-        sender_type = arr[1]
-        sender_host = arr[2]
+        sender_type = self.arr[1]
+        sender_host = self.arr[2]
         sender_port = int(arr[3])
         self.parsed.host = sender_host
         self.parsed.port = sender_port
@@ -223,13 +246,15 @@ class MessageParser:
         elif sender_type == 'worker':
             self.parsed.type = 'worker'
             self.parse_worker_message()
-        else:
+        elif sender_type == 'client':
             self.parsed.type = 'client'
             self.parse_client_message()
+        else:
+            self.parsed.unparsed = self.arr
         return self.parsed
 
     def parse_master_message(self):
-        ''' Master Messages should be defined here '''
+        ''' Messages sent from the master node should be defined here '''
         command = self.arr[4]
 
         if command == 'map':
@@ -244,19 +269,40 @@ class MessageParser:
             range = self.arr[6].split("-")
             self.parsed.red_start_letter = range[0]
             self.parsed.red_end_letter = range[1]
+        elif command == 'search':
+            self.parsed.action = 'search'
+            self.parsed.keywords = self.arr[5].split(',')
+        elif command == 'response':
+            self.parsed.action = 'response'
+            self.parsed.results = repr(self.arr[5])
         else:
             self.parsed.action = command
+            self.parsed.unparsed = self.arr
 
 
     def parse_worker_message(self):
-        ''' Worker Messages should be defined here '''
+        ''' Messages sent from the worker node should be defined here '''
         command = self.arr[4]
         if command == 'connect':
             self.parsed.action = 'connect'
+        elif command == 'search':
+            self.parsed.action = 'search'
+            self.parsed.status = self.arr[5]
+            self.parsed.result = repr(self.arr[6])
+        else:
+            self.parsed.action = command
+            self.parsed.unparsed = self.arr
 
     def parse_client_message(self):
-        ''' Client Messages should be defined here '''
+        ''' Messages sent from a client should be defined here '''
         command = self.arr[4]
+
+        if command == 'keyword':
+            self.parsed.action = 'keyword'
+            self.parsed.clientid = self.arr[5]
+            self.parsed.keywords = repr(self.arr[6])
+        else:
+            self.parsed.unparsed = self.arr
 
 
 class MessageBuilder:
@@ -284,13 +330,39 @@ class MessageBuilder:
         )
         return data
 
-    ''' INDEX WORKER NODE MESSAGES '''
+    ''' CLIENT KEYWORD SEARCH MESSAGES '''
+    def add_keyword_search_message(self, client_id, host, port, keyword_str):
+        self.addr = (host, str(port))
+        # used to send search query master keyword search messages
+        message = bytes("RPC | CLIENT | %s | %s | KEYWORD | %s | %s"%(host, str(port),client_id, str(keyword_str)), 'utf-8')
+        self.messages.append(message)
+        self.connid += 1
+
+    ''' ------- WORKER NODE MESSAGES ---------- '''
+
     def add_registration_message(self, host, port ):
         self.addr = (host, str(port))
         # used for worker nodes to connect to master node
         message = bytes("RPC | WORKER | %s | %s | CONNECT "%(host, str(port)), 'utf-8')
         self.messages.append(message)
         self.connid += 1
+
+    def add_task_complete_message(self, host, port, task, task_data):
+        self.addr = (host, str(port))
+        # used for worker nodes to send task complete status
+        message = bytes("RPC | WORKER | %s | %s | %s | COMPLETE | %s "%(host, str(port), str(task).upper(),str(task_data)), 'utf-8')
+        self.messages.append(message)
+        self.connid += 1
+
+    ''' INDEX WORKER NODE MESSAGES '''
+
+
+    ''' SEARCH WORKER NODE MESSAGES '''
+    def add_search_complete_message(self, host, port, task, task_data):
+        self.add_task_complete_message(self, host, port, 'SEARCH', task_data)
+
+
+    ''' ------- MASTER NODE MESSAGES ---------- '''
 
     ''' INDEX MASTER NODE MESSAGES '''
     def add_task_map_message(self,host, port, path, range_start="", range_end=""):
@@ -309,6 +381,25 @@ class MessageBuilder:
         self.messages.append(message)
         self.connid += 1
 
+    ''' SEARCH MASTER NODE MESSAGES '''
+    def add_task_search_message(self,host, port, keywords):
+        self.addr = (host, str(port))
+        keywords = str(keywords)
+        # used for master to send a task message to worker node
+        message = bytes("RPC | MASTER | %s| %s | SEARCH | %s "%(host, str(port), keywords ), 'utf-8')
+        self.messages.append(message)
+        self.connid += 1
+
+    def add_client_response_message(self,host, port, result):
+        self.addr = (host, str(port))
+        result = str(result)
+        # used for master to send a task message to worker node
+        message = bytes("RPC | MASTER | %s| %s | RESPONSE | %s "%(host, str(port), result ), 'utf-8')
+        self.messages.append(message)
+        self.connid += 1
+
     def clear(self):
+        #clear the message queue
         self.messages = []
         self.connid = 0
+
