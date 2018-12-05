@@ -13,9 +13,9 @@ from pathlib import Path
     -host: {optional} host address for the master server
 '''
 INDEX_DIR = path.join(Path(path.dirname(__name__)).parent, 'indexer/index')
-NUM_NODES = 4
+NUM_NODES = 2
 HOST = 'localhost'
-PORT = 9858
+PORT = 9877
 
 def set_index_dir(parser, args):
     ''' Check if index directory is valid'''

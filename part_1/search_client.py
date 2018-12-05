@@ -61,7 +61,7 @@ keyword_list = [
 ]
 for i in range(2):
     kw = ",".join(keyword_list[i%2])
-    builder = MessageBuilder()
+    builder = MessageBuilder(messages=[])
     builder.add_keyword_search_message(i, host, port,kw )
 
     messages.append(builder.build().outb)

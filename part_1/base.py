@@ -7,7 +7,7 @@
 
 '''
 import atexit
-import concurrent.futures
+import asyncore
 import logging
 import logging.handlers
 import multiprocessing
@@ -17,32 +17,39 @@ import selectors
 import socket
 import sys
 import time
+from datetime import datetime
 import types
 from multiprocessing import Process, current_process
 
-
+logger = None
 def create_logger():
-    multiprocessing.log_to_stderr()
-    logger = multiprocessing.get_logger()
-    logger.setLevel(logging.DEBUG)
+    global logger
+    if logger is None:
 
-    fh = logging.FileHandler("index-%s.log"%str(time.time()), mode='w+')
-    fh.setLevel(logging.DEBUG)
-    fmt = '%(processName)s - %(process)d	: %(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    formatter = logging.Formatter(fmt)
-    fh.setFormatter(formatter)
+        multiprocessing.log_to_stderr()
+        logger = multiprocessing.get_logger()
+        logger.setLevel(logging.INFO)
+        now = datetime.now()
+        fh = logging.FileHandler("index-%s.log"%now.strftime("%Y-%m-%d"), mode='w+')
+        fh.setLevel(logging.INFO)
+        fmt = '%(processName)s - %(process)d	: %(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        formatter = logging.Formatter(fmt)
+        fh.setFormatter(formatter)
 
-    logger.addHandler(fh)
+        logger.addHandler(fh)
+        atexit.register(fh.close)
+        atexit.register(logger.removeHandler,fh)
     return logger
-
-logger = create_logger()
+create_logger()
 
 class ProcessNode(Process):
+    global logger
     def __init__(self, host, port, data=None):
+        super(ProcessNode, self).__init__()
         self.host = host
         self.port = port
         self.data = data
-        super(ProcessNode, self).__init__()
+
 
     def run(self):
         self.selector = selectors.DefaultSelector()
@@ -82,7 +89,7 @@ class ProcessNode(Process):
         sock = key.fileobj
         data = key.data
         if mask & selectors.EVENT_READ:
-            recv_data = sock.recv(1024)  # Should be ready to read
+            recv_data = sock.recv(4098)  # Should be ready to read
             if recv_data:
                 logger.info('received '+repr(recv_data)+ ' from connection '+ str(data.addr))
                 # Handle request using child method
@@ -93,51 +100,52 @@ class ProcessNode(Process):
             else:
                 logger.info('closing connection ' + str(data.addr))
                 self.selector.unregister(sock)
-
                 if hasattr(self, 'handle_disconnect') and callable(self.handle_disconnect):
                     self.handle_disconnect(data, sock)
                 sock.close()
         if mask & selectors.EVENT_WRITE:
             if data.outb:
-                logger.info("responding "+ repr(data.outb)+" to "+ str(data.addr))
+                logger.info("sending "+ repr(data.outb)+" to "+ str(data.addr))
                 sent = sock.send(data.outb)  # Should be ready to write
                 data.outb = data.outb[sent:]
+                #print(data.outb)
 
     def shutdown(self):
         self.selector.close()
-        self.sock.shutdown(socket.SHUT_RDWR)
         self.sock.close()
 
+
 class MasterNode(ProcessNode):
+    global logger
     # ALL WORKERS CONNECTED
     NONE_CONNECTED = 3
     ALL_CONNECTED = 4
     PARTIAL_CONNECTED = 5
 
     def __init__(self, host, port, num_workers):
-    # def __init__(self, host, port, start_master=None, handle_request=None, handle_connection=None):
+        super(MasterNode, self).__init__(host, port)
         self.worker_status = self.NONE_CONNECTED
         self.worker_conns = {}
         self.num_workers = num_workers
+
+    def handle_start(self):
         if hasattr(self, 'start_master') and callable(self.start_master):
-            self.start_master()
+                self.start_master()
         else:
             NotImplementedError('start_master not yet implemented')
 
-        return super(MasterNode, self).__init__(host, port)
-
     def handle_request(self, conn, addr, received):
-        logger.info('Adding new worker node to list')
-
         # Parse incoming message
         received = received.decode("utf-8")
         parser = MessageParser()
         parsed = parser.parse(received)
-        logger.info('Parsed Message: '+repr(received)+'')
+        logger.info('Parsed Message: '+repr(parsed)+'')
 
         # Check if new client is  worker node
         if parsed.type == 'worker':
             if parsed.action == 'connect':
+                logger.info('Adding new worker node to list')
+
                 worker_port = parsed.port
                 worker_host = parsed.host
                 worker_ip = (worker_host, worker_port)
@@ -154,25 +162,46 @@ class MasterNode(ProcessNode):
                         self.worker_status = self.ALL_CONNECTED
                     else:
                         self.worker_status = self.PARTIAL_CONNECTED
-            return
+        return
 
     def handle_disconnect(self, conn, data):
         # try to find the worker that was disconnected
-        # need to remove connection and can try to reconnect? or restart?
+        for worker, w_conn in self.worker_conns.items():
+            # delete worker from list
+            if conn.addr == w_conn:
+                # check if worker is still alive
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                    res = sock.connect_ex((self.host, self.port))
+                    if res != 0:
+                        # worker failed
+                        # remove from worker_conn
+                        del self.worker_conns
+                        [worker]
+                        self.num_workers -= 1
+
+                        #call child method handler
+                        if hasattr(self, 'handle_failed_worker') and callable(self.handle_failed_worker):
+                            self.handle_failed_worker(conn, data, worker)
+
+
         pass
 class WorkerNode(ProcessNode):
     def __init__(self, host, port, master_addr):
+        super(WorkerNode, self).__init__(host, port)
         self.master_addr = master_addr
         self.master_conn = None
-        super(WorkerNode, self).__init__(host, port)
-        if hasattr(self, 'start_worker') and callable(self.start_worker):
-                self.start_worker()
 
     def handle_start(self):
         ''' Register as a worker to the master node using self.master_addr '''
+        if hasattr(self, 'start_worker') and callable(self.start_worker):
+            self.start_worker()
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.setblocking(False)
-        sock.connect_ex(self.master_addr)
+        resp = sock.connect_ex(self.master_addr)
+        #print(resp)
+        if resp == 0:
+            logging.info('Worker Node %s failed to connect to master node'%str(self.port))
+            raise ChildProcessError('Worker %s not able to connect to master' %self.port)
         events = selectors.EVENT_READ | selectors.EVENT_WRITE
 
         # creates a registration message to send to master node
@@ -184,9 +213,18 @@ class WorkerNode(ProcessNode):
         self.selector.register(sock, events, data=data)
 
         # add data to be sent to master
-        sock.send(messages)
-        logging.info('Worker Node %s connected to master node'%str(self.port))
-        self.master_conn = sock
+        try:
+            sock.send(messages)
+            logging.info('Worker Node %s connected to master node'%str(self.port))
+            self.master_conn = sock
+        except:
+            # retry before failing
+            time.sleep(3)
+            sock.send(messages)
+            logging.info('Worker Node %s failed to connect to master node'%str(self.port))
+            self.master_conn = sock
+            # Master must have fatally failed
+            exit(1)
 
     def handle_disconnect(self, conn, data):
         # master can reconnect again or should I shutdown?
@@ -219,7 +257,6 @@ class MessageParser:
             # Only if data was unparsable
             unparsed = [],
             clientid = None
-
         )
 
     def parse(self, message):
@@ -300,7 +337,7 @@ class MessageParser:
         if command == 'keyword':
             self.parsed.action = 'keyword'
             self.parsed.clientid = self.arr[5]
-            self.parsed.keywords = repr(self.arr[6])
+            self.parsed.keywords = self.arr[6].split(',')
         else:
             self.parsed.unparsed = self.arr
 
@@ -328,13 +365,14 @@ class MessageBuilder:
             messages=list(self.messages),
             outb= self.outb
         )
+        self.clear()
         return data
 
     ''' CLIENT KEYWORD SEARCH MESSAGES '''
     def add_keyword_search_message(self, client_id, host, port, keyword_str):
         self.addr = (host, str(port))
         # used to send search query master keyword search messages
-        message = bytes("RPC | CLIENT | %s | %s | KEYWORD | %s | %s"%(host, str(port),client_id, str(keyword_str)), 'utf-8')
+        message = bytes("RPC | CLIENT | %s | %s | KEYWORD | %s | %s |"%(host, str(port),client_id, str(keyword_str)), 'utf-8')
         self.messages.append(message)
         self.connid += 1
 
@@ -343,14 +381,14 @@ class MessageBuilder:
     def add_registration_message(self, host, port ):
         self.addr = (host, str(port))
         # used for worker nodes to connect to master node
-        message = bytes("RPC | WORKER | %s | %s | CONNECT "%(host, str(port)), 'utf-8')
+        message = bytes("RPC | WORKER | %s | %s | CONNECT |"%(host, str(port)), 'utf-8')
         self.messages.append(message)
         self.connid += 1
 
     def add_task_complete_message(self, host, port, task, task_data):
         self.addr = (host, str(port))
         # used for worker nodes to send task complete status
-        message = bytes("RPC | WORKER | %s | %s | %s | COMPLETE | %s "%(host, str(port), str(task).upper(),str(task_data)), 'utf-8')
+        message = bytes("RPC | WORKER | %s | %s | %s | COMPLETE | %s |"%(host, str(port), str(task).upper(),str(task_data)), 'utf-8')
         self.messages.append(message)
         self.connid += 1
 
@@ -369,7 +407,7 @@ class MessageBuilder:
         self.addr = (host, str(port))
         range = "%s-%s"%(str(range_start), str(range_end))
         # used for master to send a task message to worker node
-        message = bytes("RPC | MASTER | %s| %s | MAP | %s | %s"%(host, str(port), path, str(range)) , 'utf-8')
+        message = bytes("RPC | MASTER | %s| %s | MAP | %s | %s |"%(host, str(port), path, str(range)) , 'utf-8')
         self.messages.append(message)
         self.connid += 1
 
@@ -377,7 +415,7 @@ class MessageBuilder:
         self.addr = (host, str(port))
         range = "%s-%s"%(str(range_start), str(range_end))
         # used for master to send a task message to worker node
-        message = bytes("RPC | MASTER | %s| %s | REDUCE | %s | %s"%(host, str(port), path, str(range)) , 'utf-8')
+        message = bytes("RPC | MASTER | %s | %s | REDUCE | %s | %s |"%(host, str(port), path, str(range)) , 'utf-8')
         self.messages.append(message)
         self.connid += 1
 
@@ -386,7 +424,7 @@ class MessageBuilder:
         self.addr = (host, str(port))
         keywords = str(keywords)
         # used for master to send a task message to worker node
-        message = bytes("RPC | MASTER | %s| %s | SEARCH | %s "%(host, str(port), keywords ), 'utf-8')
+        message = bytes("RPC | MASTER | %s | %s | SEARCH | %s |"%(host, str(port), keywords ), 'utf-8')
         self.messages.append(message)
         self.connid += 1
 
@@ -394,7 +432,7 @@ class MessageBuilder:
         self.addr = (host, str(port))
         result = str(result)
         # used for master to send a task message to worker node
-        message = bytes("RPC | MASTER | %s| %s | RESPONSE | %s "%(host, str(port), result ), 'utf-8')
+        message = bytes("RPC | MASTER | %s | %s | RESPONSE | %s |"%(host, str(port), result ), 'utf-8')
         self.messages.append(message)
         self.connid += 1
 
