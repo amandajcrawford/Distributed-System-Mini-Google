@@ -63,11 +63,10 @@ class SearchMasterNode(MasterNode):
     def __init__(self, host, port, worker_num, index):
 
         self.index_dir = index
-        # map of clients connections who are awaiting a response
-        self.waiting_clients = {}
-        # self.task_queue = Queue()
-        # self.partial_task = Queue()
-        # self.rank_queue = Queue()
+
+        # Set of tasks currently being handled 
+        self.task_map = {}
+
         self.task_queue = []
         self.partial_task = []
         self.rank_queue = []
@@ -118,7 +117,6 @@ class SearchMasterNode(MasterNode):
                 'task_id': self.task_count
             }
             # add a new task to the queue to be sent to the worker
-            #self.task_queue.put_nowait(task)
             self.task_queue.append(task)
             self.task_count += 1
             logger.info('adding keyword search query to task queue: '+str(task)+'')
@@ -139,17 +137,18 @@ class SearchMasterNode(MasterNode):
             task_id = results['task_id']
             hits = results['hits']
             if task_id in self.partial_task:
-                idx = self.partial_task.index(task_id)
-                job_num = self.partial_task[idx]['waiting_jobs']
+                # idx = self.partial_task.index(task_id)
+                job_num = self.task_map[task_id]['waiting_jobs']
+                # job_num = self.partial_task[idx]['waiting_jobs']
 
                 # add to list if there were any matches
                 if len(hits) > 0:
-                    self.partial_task[idx]['results'].append( hits)
-                self.partial_task[idx]['waiting_jobs']-=1
+                    self.task_map[task_id]['results'].append(hits)
+                self.task_map[task_id]['waiting_jobs']-=1
 
                 # if no more waiting_job then ready for ranking
-                if self.partial_task[idx]['waiting_jobs'] == 0:
-                    self.rank_queue.append(self.partial_task[idx])
+                if self.task_map[task_id]['waiting_jobs'] == 0:
+                    self.rank_queue.append(task_id)
                     self.partial_task.remove(task_id)
 
             # remove assignment from worker list
@@ -163,23 +162,23 @@ class SearchMasterNode(MasterNode):
             if self.worker_status == self.ALL_CONNECTED:
                 # check if self.work_queue has tasks ready to process
                 if self.continue_to_next_task and len(self.task_queue) > 0:
-                    task = self.task_queue.pop()
-                    print(task)
                     # Wait until we finish the process task first
                     self.continue_to_next_task = False
-                    self.process_task(task)
+                    self.process_task()
                     self.continue_to_next_task = True
 
-    def process_task(self, task):
+    def process_task(self):
 
         #Get task from queue
-
+        task = self.task_queue.pop()
         task_id = task['task_id']
-        keywords = task['keywords'].sort()
-        logger.info('=====Processing task %s with keywords: %r ====='%(str(task_id), str(keywords)))
+        kwds = task['keywords']
+
+        logger.info('=====Processing task %s with keywords: %r ====='%(str(task_id), str(kwds)))
+        
         # Get the length of keywords
         # TODO: remove stopwords
-        num_keywords = len(keywords)
+        num_keywords = len(kwds)
 
         # TO DO: Partition jobs
         available_workers = []
@@ -217,7 +216,7 @@ class SearchMasterNode(MasterNode):
                 worker = worker_tuple[0]
                 load = worker_tuple[1]
                 percentage = load/total_payload
-                worker_percentage.append((worker, worker_percentage))
+                worker_percentage.append((worker, percentage))
             
             # Get the number of workers need
             helpers_needed = math.floor(num_keywords/max_payload) - len(available_workers)
@@ -233,16 +232,16 @@ class SearchMasterNode(MasterNode):
 
 
     
-        # # if we have enough available workers, then partion and send job
+        #  if we have enough available workers, then partion and send job
         # if len(available_workers) >= num_keywords:
         # Assign each worker with a responsible subset of keywords
-        kw_partitions = keywords % len(available_workers)
+        kw_partitions = num_keywords % len(available_workers)
         task['results'] = []
         task['waiting_jobs'] = kw_partitions
         for i in range(kw_partitions):
             start = i * kw_partitions
             end = ((i+1) * kw_partitions)-1
-            kw_split = keywords[start:end]
+            kw_split = kwds[start:end]
             kw_job = ','.join(kw_split)
 
             # create a job message
@@ -267,7 +266,9 @@ class SearchMasterNode(MasterNode):
                 left_over_jobs.append(kw_job)
 
         # will process task once all jobs has been fulfilled
-        self.partial_task[task_id] = task
+        logger.info('Sent jobs for task %d with %s keywords......waiting for %d tasks to complete.'%(task_id, str(kwds),  kw_partitions))
+        self.task_map[task_id] = task
+        self.partial_task.append(task_id)
 
     def handle_ranking_jobs(self):
         logger.info('Waiting for new rank jobs')
@@ -294,7 +295,7 @@ class SearchCluster:
             self.master_addr = master_addr
 
         if not worker_num:
-            return RuntimeError("Worker nodes not defined")
+            raise RuntimeError("Worker nodes not defined")
 
         self.host = self.master_addr[0]
         self.master_port = self.master_addr[1]
