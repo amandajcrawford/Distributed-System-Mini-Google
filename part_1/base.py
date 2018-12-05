@@ -200,10 +200,10 @@ class WorkerNode(ProcessNode):
         resp = sock.connect_ex(self.master_addr)
         #print(resp)
         if resp == 0:
-            logging.info('Worker Node %s failed to connect to master node'%str(self.port))
+            logger.info('Worker Node %s failed to connect to master node'%str(self.port))
             raise ChildProcessError('Worker %s not able to connect to master' %self.port)
         events = selectors.EVENT_READ | selectors.EVENT_WRITE
-
+        logger.info('Worker Node %s connecting to master node'%str(self.port))
         # creates a registration message to send to master node
         message = MessageBuilder(messages=[])
         message.add_registration_message(self.host, self.port)
