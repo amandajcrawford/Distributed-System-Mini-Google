@@ -180,16 +180,16 @@ class IndexMasterNode(MasterNode):
 
 
             # # Create map task for worker
-            builder = MessageBuilder(messages=[])
-            builder.add_task_map_message(self.host, self.port, fi, y, (list(i.values())[0]) )
-            message = builder.build()
+            # builder = MessageBuilder(messages=[])
+            # builder.add_task_map_message(self.host, self.port, fi, y, (list(i.values())[0]) )
+            # message = builder.build()
 
             # # Send task to worker by first getting the worker socket channel
-            worker_conn = self.worker_conns[worker_keys[worker]]
-            print(worker_conn)
-            logger.info('Sending worker message %s'% str(message.outb))
-            # Gets the converted outbound message and send to the worker
-            worker_conn.send(message.outb)
+            # worker_conn = self.worker_conns[worker_keys[worker]]
+            # print(worker_conn)
+            # logger.info('Sending worker message %s'% str(message.outb))
+            # # Gets the converted outbound message and send to the worker
+            # worker_conn.send(message.outb)
 
 class IndexCluster:
 

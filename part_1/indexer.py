@@ -3,6 +3,7 @@ import socket
 from index_cluster import IndexClient
 from os import path
 from pathlib import Path
+import pdb
 '''
     Indexer.py
     Usage: python indexer.py  -fs [input_directory] -nodes [ds_nodes] -host [ds_host] -port [master_port]
@@ -12,7 +13,8 @@ from pathlib import Path
     -port: {optional} port address for the master server, will also be used for the worker nodes
     -host: {optional} host address for the master server
 '''
-INDEX_DIR = path.join(Path(path.dirname(__name__)).parent, 'inputs')
+INDEX_DIR = path.abspath(path.join(path.dirname(path.realpath(__file__)),'../inputs'))
+# path.join(Path(path.dirname(__name__)).parent, 'inputs')
 NUM_NODES = 4
 HOST = 'localhost'
 PORT = 9857
@@ -22,7 +24,7 @@ def set_index_dir(parser, args):
     global INDEX_DIR
     if args.dir is not None:
         dir = args.dir
-        print( path.join(Path(path.dirname(path.abspath(__name__))).parent,dir))
+        print(path.join(Path(path.dirname(path.abspath(__name__))).parent,dir))
         if path.isdir(dir):
             INDEX_DIR = dir
         elif path.isdir(path.join(path.dirname(path.abspath(__file__)),dir)):
@@ -73,7 +75,6 @@ def main():
     return
 
 if __name__ == "__main__":
-
     # Arguments Configuration
     parser = argparse.ArgumentParser(prog="Mini Google Indexer", description="A mini google distributed map reduce indexing system ")
     parser.add_argument("-fs", dest="dir", action="store", type=str, help="Enter the full path to the directory to the set of documents to be documented")
