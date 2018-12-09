@@ -16,6 +16,7 @@ def start_connections(host, port, num_conns):
         connid = i + 1
         print("starting connection", connid, "to", server_addr)
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.setblocking(False)
         sock.connect_ex(server_addr)
         events = selectors.EVENT_READ | selectors.EVENT_WRITE
@@ -56,9 +57,10 @@ if len(sys.argv) != 4:
 
 host, port, num_conns = sys.argv[1:4]
 keyword_list = [
-    ['hello', 'love'],
-    ['bye', 'hate']
+    ['architecture', 'love'],
+    ['conceptualization', 'hate', 'comparisons']
 ]
+
 for i in range(2):
     kw = ",".join(keyword_list[i%2])
     builder = MessageBuilder(messages=[])

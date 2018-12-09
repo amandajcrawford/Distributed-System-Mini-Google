@@ -19,6 +19,7 @@ import sys
 import time
 from datetime import datetime
 import types
+import psutil
 from multiprocessing import Process, current_process
 
 logger = None
@@ -30,7 +31,7 @@ def create_logger():
         logger = multiprocessing.get_logger()
         logger.setLevel(logging.INFO)
         now = datetime.now()
-        fh = logging.FileHandler("index-%s.log"%now.strftime("%Y-%m-%d"), mode='w+')
+        fh = logging.FileHandler("MiniGoogle-%s.log"%now.strftime("%Y-%m-%d"), mode='w+')
         fh.setLevel(logging.INFO)
         fmt = '%(processName)s - %(process)d	: %(asctime)s - %(name)s - %(levelname)s - %(message)s'
         formatter = logging.Formatter(fmt)
@@ -58,9 +59,10 @@ class ProcessNode(Process):
         self.sock.listen()
         logger.info('listening on %s %s'%(self.host, self.port))
         self.sock.setblocking(False)
+        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.selector.register(self.sock, selectors.EVENT_READ, data=self.data)
         atexit.register(self.shutdown)
-
+        self.host = socket.gethostname()
         # Call child start function for any pre server interaction
         if hasattr(self, 'handle_start') and callable(self.handle_start):
             self.handle_start()
@@ -130,7 +132,7 @@ class MasterNode(ProcessNode):
 
     def handle_start(self):
         if hasattr(self, 'start_master') and callable(self.start_master):
-                self.start_master()
+            self.start_master()
         else:
             NotImplementedError('start_master not yet implemented')
 
@@ -171,7 +173,7 @@ class MasterNode(ProcessNode):
             if conn.addr == w_conn:
                 # check if worker is still alive
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-                    res = sock.connect_ex((self.host, self.port))
+                    res = sock.connect_ex(worker)
                     if res != 0:
                         # worker failed
                         # remove from worker_conn
@@ -182,7 +184,8 @@ class MasterNode(ProcessNode):
                         #call child method handler
                         if hasattr(self, 'handle_failed_worker') and callable(self.handle_failed_worker):
                             self.handle_failed_worker(conn, data, worker)
-
+                    else:
+                        self.worker[worker] = res
 
         pass
 class WorkerNode(ProcessNode):
@@ -253,6 +256,13 @@ class MessageParser:
             keywords = [],
             status = "",
             results={},
+            taskid=None,
+            assignment=[],
+            index_dir='',
+
+            #Server Info
+            cpu = None,
+            mem = None,
 
             # Only if data was unparsable
             unparsed = [],
@@ -276,6 +286,10 @@ class MessageParser:
         sender_port = int(arr[3])
         self.parsed.host = sender_host
         self.parsed.port = sender_port
+
+        # Get sender sys info
+        self.parsed.cpu= self.arr[-1]
+        self.parsed.mem = self.arr[-2]
 
         if sender_type == 'master':
             self.parsed.type = 'master'
@@ -308,10 +322,15 @@ class MessageParser:
             self.parsed.red_end_letter = range[1]
         elif command == 'search':
             self.parsed.action = 'search'
-            self.parsed.keywords = self.arr[5].split(',')
+            self.parsed.taskid = self.arr[5]
+            self.parsed.keywords = self.arr[6].strip().split(",")
         elif command == 'response':
             self.parsed.action = 'response'
             self.parsed.results = repr(self.arr[5])
+        elif command == 'assign':
+            self.parsed.action = 'assign'
+            self.parsed.index_dir = self.arr[5]
+            self.parsed.assignment = self.arr[6].strip().split(",")
         else:
             self.parsed.action = command
             self.parsed.unparsed = self.arr
@@ -325,7 +344,10 @@ class MessageParser:
         elif command == 'search':
             self.parsed.action = 'search'
             self.parsed.status = self.arr[5]
-            self.parsed.result = repr(self.arr[6])
+            self.parsed.taskid = self.arr[6]
+            self.parsed.result = repr(self.arr[7])
+        elif command == 'sys':
+            self.parsed.action = 'sys'
         else:
             self.parsed.action = command
             self.parsed.unparsed = self.arr
@@ -337,7 +359,7 @@ class MessageParser:
         if command == 'keyword':
             self.parsed.action = 'keyword'
             self.parsed.clientid = self.arr[5]
-            self.parsed.keywords = self.arr[6].split(',')
+            self.parsed.keywords = self.arr[6].strip().split(',')
         else:
             self.parsed.unparsed = self.arr
 
@@ -355,14 +377,18 @@ class MessageBuilder:
         self.addr = ""
 
     def build(self):
-        msg_total = sum(len(m) for m in self.messages)
-        self.outb = b"|".join(self.messages)
+        # Get the system information
+        cpu_info = psutil.cpu_times().system
+        mem_info = psutil.virtual_memory().percent
+        message = self.messages[-1].decode('utf-8')
+        info = "%s | %s |"%(str(mem_info), str(cpu_info))
+        message = message + info
+        self.outb = bytes(message, "utf-8")
         data = types.SimpleNamespace(
             addr = ''.join(self.addr) ,
             connid=self.connid,
-            msg_total= msg_total,
             recv_total=self.recv_total,
-            messages=list(self.messages),
+            messages=list(message),
             outb= self.outb
         )
         self.clear()
@@ -396,8 +422,12 @@ class MessageBuilder:
 
 
     ''' SEARCH WORKER NODE MESSAGES '''
-    def add_search_complete_message(self, host, port, task, task_data):
-        self.add_task_complete_message(self, host, port, 'SEARCH', task_data)
+    def add_search_complete_message(self, host, port, taskid, task_data):
+        self.addr = (host, str(port))
+        # used for worker nodes to send task complete status
+        message = bytes("RPC | WORKER | %s | %s | SEARCH | COMPLETE | %s | %r |"%(host, str(port), str(taskid),task_data), 'utf-8')
+        self.messages.append(message)
+        self.connid += 1
 
 
     ''' ------- MASTER NODE MESSAGES ---------- '''
@@ -420,11 +450,19 @@ class MessageBuilder:
         self.connid += 1
 
     ''' SEARCH MASTER NODE MESSAGES '''
-    def add_task_search_message(self,host, port, keywords):
+    def add_keyword_assignment_message(self, host, port, index_dir, assignment):
         self.addr = (host, str(port))
-        keywords = str(keywords)
+        assignment = ",".join(assignment)
         # used for master to send a task message to worker node
-        message = bytes("RPC | MASTER | %s | %s | SEARCH | %s |"%(host, str(port), keywords ), 'utf-8')
+        message = bytes("RPC | MASTER | %s | %s | ASSIGN | %s | %s |"%(host, str(port), index_dir, assignment), 'utf-8')
+        self.messages.append(message)
+        self.connid += 1
+
+    def add_task_search_message(self,host, port, task_id, keywords):
+        self.addr = (host, str(port))
+        keywords = ','.join(keywords)
+        # used for master to send a task message to worker node
+        message = bytes("RPC | MASTER | %s | %s | SEARCH | %d | %s |"%(host, str(port), task_id, keywords), 'utf-8')
         self.messages.append(message)
         self.connid += 1
 
