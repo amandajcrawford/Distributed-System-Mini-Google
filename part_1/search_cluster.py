@@ -376,12 +376,31 @@ class SearchMasterNode(MasterNode):
 
 
     def handle_index_updates(self):
-        # TODO: Get last updates hash
-        self.__index_last_update = 0
+        start = True
+        self.__index_update = False
         while True:
-            if self.__index_last_update == 0:
+            if not self.__index_update:
+                new_index_dir = ""
+                # Checking if index has been updated 
+                up_file = pathlib.Path(os.path.join(self.index_dir, 'pointer.txt'), 'r') 
+                if up_file.is_file():
+                    with open(os.path.join(self.index_dir, 'pointer.txt'), 'r') as up_file:
+                        # Get the first line only
+                        new_index_dir = up_file.readline()
+                
+                    # Check to see if new index actually exists
+                    if new_index_dir and pathlib.Path(new_index_dir).is_dir() and self.index_dir != new_index_dir:
+                        logger.info('New Index System Found Index: %s'%new_index_dir)
+                        self.index_dir = new_index_dir
+                        self.__index_update = True
+                if start:
+                    self.__index_update = True
+                    start = False 
+
+            if self.__index_update:
+                new_index ={}
                 logger.info('Building Index System')
-                new_index = {}
+                self.index_ready = False       
                 # Loop through index directory
                 for file in os.listdir(self.index_dir):
                     if file.endswith(".txt"):
@@ -399,11 +418,12 @@ class SearchMasterNode(MasterNode):
                 
                 # Update index once processing has been completed
                 self.index_system = new_index
-                self.__index_last_update = 1
+                self.__index_update = False
                 self.index_ready = True
             
             worker_sys = self.worker_sys.items()
             worker_index = self.worker_index.items()
+            
             if self.index_ready and len(worker_sys) > 0:
                 # check to see if we have any new workers
                 new_worker = False
