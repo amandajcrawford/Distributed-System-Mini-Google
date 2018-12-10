@@ -220,22 +220,23 @@ class SearchMasterNode(MasterNode):
             if parsed.status == 'complete':
                 results = parsed.results
                 #  get task from partial task queue based on task_id
-                task_id = parsed.taskid
+                task_id = int(parsed.taskid)
+                logger.info('=========> Processing Completed Keyword Retrieval from %s for task %s with: %s'%(str(parsed.port), str(task_id), str(results)))
                 if task_id in self.partial_task:
                     # add to list if there were any matches
-                    if len(hits.items()) > 0:
+                    if len(results.items()) > 0:
                         self.task_map[task_id]['results'].append(results)
                     self.task_map[task_id]['waiting_jobs']= self.task_map[task_id]['waiting_jobs']-1
 
                     # if no more waiting_job then ready for ranking
                     if self.task_map[task_id]['waiting_jobs'] == 0:
                         self.rank_queue.append(task_id)
-                        print('TASK ADDED TO RANK QUWQEJ OJDWO')
+                        logger.info('=========> Task %s ready for ranking'%(str(parsed.port)))
                         self.partial_task.remove(task_id)
 
                 # remove assignment from worker list
                 worker_key = (parsed.host, parsed.port)
-                #del self.worker_assignments[worker_key][task_id]
+                del self.worker_assignments[worker_key][task_id]
 
 
     def handle_task_jobs(self):
@@ -304,7 +305,7 @@ class SearchMasterNode(MasterNode):
         # will process task once all jobs has been fulfilled
         logger.info('====> Sent jobs for task %d with %s keywords......waiting for %d tasks to complete.'%(task_id, str(kwds), sub_tasks))
         self.task_map[task_id] = task
-        self.partial_task.append(task_id)
+        self.partial_task.append(int(task_id))
 
     def handle_ranking_jobs(self):
         logger.info('Waiting for new rank jobs')
@@ -320,38 +321,37 @@ class SearchMasterNode(MasterNode):
 
     def rank_task(self):
         task_id = self.rank_queue[-1]
-        self.rank_queue.remove(task_id)
-        logger.info('====> Starting ranking for jobs for task %d with %r'%(task_id, data))
+        self.rank_queue.remove(int(task_id))
         # Get task results
         data = self.task_map[task_id]
+        logger.info('====> Starting ranking for jobs for task %d with %r'%(task_id, str(data['keywords']) ))
 
         # Flatten result list
         documents = {}
         keyword_metrics = {}
-        print(data)
+ 
         for obj in data['results']:
             for kw,v in obj.items():
-                kw = kw[1:-1]
-
                 for d in v:
-                    doc_arr = v.split(':')
+                    doc_arr = d.split(':')
                     doc_name = doc_arr[0]
                     doc_freq = doc_arr[1]
-                    if kw not in  keyword_metrics:
-                                         keyword_metrics[kw] = {}
+                    if kw not in keyword_metrics:
+                        keyword_metrics[kw] = {}
                     if doc_name not in documents.keys():
-                        document[doc_name]={}                        
-                    documents[doc_name][kw] = doc_freq
-                    keyword_metrics[kw][doc_name] = doc_freq
+                        documents[doc_name]={}                        
+                    documents[doc_name][kw] = int(doc_freq)
+                    keyword_metrics[kw][doc_name] = int(doc_freq)
 
         # Compute totals for and idf for kw
+        print(keyword_metrics)
+        print(documents)
         kw_totals = {}
         kw_idf = {}
         for kw, docs in  keyword_metrics.items():
-            kw_totals[kw]= sum([freq for freq in docs.items()])
+            kw_totals[kw]= sum([freq for freq in docs.values()])
             kw_idf[kw]= 1+ math.log(len(documents.keys())/len(docs.items()), 2)
 
-        
         # Compute tfidf and rank
         ranks ={}
         for doc, kw_set  in documents.items():
@@ -366,12 +366,12 @@ class SearchMasterNode(MasterNode):
 
         # Send ranked document to user
         conn = data['conn']
-        
+
         builder = MessageBuilder()
-        builder.add_search_complete_message(task_id, final_output)
+        builder.add_search_complete_message(self.host, self.port,task_id, final_output)
         message = builder.build()
 
-        logger.info('Task %s Complete ======>> Sending Client Rank Documents for the keywords: %s Rank: %r '%(str(task_id),str(keywords),final_output))
+        logger.info('Task %s Complete ======>> Sending Client Rank Documents for the keywords: %s Rank: %r '%(str(task_id),str(data['keywords']),final_output))
         conn.send(message.outb)
 
 
@@ -478,7 +478,7 @@ class SearchCluster:
         # host = returned_output.stdout.decode("utf-8").strip()
 
         self.master_addr = master_addr
-        self.master_addr = (host, self.master_addr[1])
+        #self.master_addr = (host, self.master_addr[1])
         #self.host = self.master_addr[0]
         self.host = host
         self.master_port = self.master_addr[1]
@@ -514,22 +514,25 @@ class SearchCluster:
 
         # Start worker nodes and append to list
         time.sleep(2)
-        worker_addr = []
-        for i in range(self.worker_num):
-            addr = addr_list[i]
-            worker_addr.append(addr)
-            #host = addr[0]
-            host = self.host
-            port = int(addr[1])
-            node = SearchWorkerNode(host, port, self.master_addr)
-            nodes.append(node)
-            node.start()
+        try:
+            worker_addr = []
+            for i in range(self.worker_num):
+                addr = addr_list[i]
+                worker_addr.append(addr)
+                #host = addr[0]
+                host = self.host
+                port = int(addr[1])
+                node = SearchWorkerNode(host, port, self.master_addr)
+                node.daemon =True
+                nodes.append(node)
+                node.start()
 
-        # Set worker addresses
-        self.nodes['workers'] = worker_addr
-        for node in nodes:
-            node.join()
-
+            # Set worker addresses
+            self.nodes['workers'] = worker_addr
+            for node in nodes:
+                node.join()
+        except:
+            exit(1)
 
 class SearchClient:
     def __init__(self, index_dir, num_nodes, host='localhost', port=9890):

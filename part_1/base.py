@@ -17,6 +17,7 @@ import selectors
 import socket
 import sys
 import time
+import json
 from datetime import datetime
 import types
 import psutil
@@ -38,8 +39,7 @@ def create_logger():
         fh.setFormatter(formatter)
 
         logger.addHandler(fh)
-        atexit.register(fh.close)
-        atexit.register(logger.removeHandler,fh)
+        # atexit.register(fh.close)
     return logger
 create_logger()
 
@@ -61,7 +61,7 @@ class ProcessNode(Process):
         self.sock.setblocking(False)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.selector.register(self.sock, selectors.EVENT_READ, data=self.data)
-        atexit.register(self.shutdown)
+        # atexit.register(self.shutdown)
         self.host = socket.gethostname()
         # Call child start function for any pre server interaction
         if hasattr(self, 'handle_start') and callable(self.handle_start):
@@ -187,7 +187,6 @@ class MasterNode(ProcessNode):
                     else:
                         self.worker[worker] = res
 
-        pass
 class WorkerNode(ProcessNode):
     def __init__(self, host, port, master_addr):
         super(WorkerNode, self).__init__(host, port)
@@ -326,7 +325,7 @@ class MessageParser:
             self.parsed.keywords = self.arr[6].strip().split(",")
         elif command == 'response':
             self.parsed.action = 'response'
-            self.parsed.results = repr(self.arr[5])
+            self.parsed.results = eval(repr(self.arr[5]))
         elif command == 'assign':
             self.parsed.action = 'assign'
             self.parsed.index_dir = self.arr[5]
@@ -345,7 +344,8 @@ class MessageParser:
             self.parsed.action = 'search'
             self.parsed.status = self.arr[5]
             self.parsed.taskid = self.arr[6]
-            self.parsed.result = repr(self.arr[7])
+            r_str = self.arr[7].replace("'", "\"")
+            self.parsed.results = json.loads(r_str)
         elif command == 'sys':
             self.parsed.action = 'sys'
         else:
