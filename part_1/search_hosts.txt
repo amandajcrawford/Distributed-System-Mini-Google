@@ -1,11 +1,11 @@
-localhost 9040
-localhost 9044
-localhost 9045
-localhost 9046
-localhost 9049
-localhost 9041
-localhost 9051
-localhost 9052
-localhost 9053
-localhost 9054
-localhost 9055
+9040
+9044
+9045
+9046
+9049
+9041
+9051
+9052
+9053
+9054
+9055
