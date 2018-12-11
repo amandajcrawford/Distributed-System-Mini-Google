@@ -15,7 +15,7 @@ from pathlib import Path
 '''
 
 HOST = ''
-M_HOST = ''
+M_HOST = 'localhost'
 M_PORT = 9877
 PORT = None
 

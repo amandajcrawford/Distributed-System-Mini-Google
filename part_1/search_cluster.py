@@ -115,7 +115,6 @@ class SearchWorkerNode(WorkerNode):
                             kw = line_arr[0].strip()
                             documents = line_arr[1:]
                             self.local_index_partition[kw] = documents
-                print(self.local_index_partition)
                 self.index_ready = True
                 self.index_update = False
 
@@ -144,6 +143,8 @@ class SearchMasterNode(MasterNode):
         self.worker_sys = {}
         self.worker_index ={}
         self.continue_to_next_task = True
+
+        self.new_worker = False
         super(SearchMasterNode, self).__init__(host, port, worker_num)
 
 
@@ -217,8 +218,10 @@ class SearchMasterNode(MasterNode):
         self.worker_sys[worker] = {'cpu': parsed.cpu, 'mem': parsed.mem}
 
         # Check to see if worker has an index partition
-        if worker not in self.worker_index:
-            self.worker_index[worker] ={}
+        if parsed.action == 'connect':
+            if worker not in self.worker_index.keys():
+                self.worker_index[worker] =[]
+            self.new_worker = True
 
         if parsed.action == 'search':
             if parsed.status == 'complete':
@@ -423,6 +426,7 @@ class SearchMasterNode(MasterNode):
                             for j, l in enumerate(f):
                                 j +=1
                             new_index[letter]['size']=j 
+                            print("Index for ", letter, "keywords file size: ", j)
                 
                 # Update index once processing has been completed
                 self.index_system = new_index
@@ -434,17 +438,16 @@ class SearchMasterNode(MasterNode):
             
             if (self.index_ready and len(worker_sys) > 0):
                 # check to see if we have any new workers
-                new_worker = False
+                #new_worker = False
                 # sort index by size
                 index_sorted = sorted(self.index_system.items(), key=lambda kv: kv[1]['size'])
-                print("here")
                 # sort server by mem
                 worked_sorted = sorted(worker_sys, key=lambda kv: kv[1]['mem'])
-                for worker, index in worker_index:
-                    if len(index) == 0 and worker is not None:
-                        new_worker = True
+                # for worker, index in worker_index:
+                #     if len(index) == 0 and worker is not None:
+                #         new_worker = True
                 
-                if new_worker or self.index_changed:
+                if self.new_worker or self.index_changed:
                     # Compute partitions
                     num_ranges = math.floor(len(index_sorted)/len(worked_sorted))
                     i = 0
@@ -472,6 +475,7 @@ class SearchMasterNode(MasterNode):
                         logger.info('Sending Worker %s keyword assignment: %s '%(str(worker), str(kw_assignment)))
                         
                         i += 1
+                        self.new_worker = False
                 
         
 

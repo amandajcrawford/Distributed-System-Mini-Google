@@ -31,7 +31,7 @@ def set_index_dir(parser, args):
             INDEX_DIR = path.abspath(path.join(Path(path.dirname(path.abspath(__name__))).parent,idir))
         else:
             parser.error("Directory to Index System not found, please enter the absolute path")
-    print("Index Root: "INDEX_DIR)
+    print("Index Root: ",INDEX_DIR)
 
 def set_num_cluster_nodes(parser, args):
     ''' Check if valid number of nodes '''

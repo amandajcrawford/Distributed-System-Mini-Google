@@ -59,7 +59,7 @@ class ProcessNode(Process):
             self.sock.bind((self.host, self.port))
             self.sock.listen()
         except Exception as e:
-            raise Error('Failed to connect to master node')
+            raise ConnectionError('Failed to connect to master node')
         finally:
             logger.info('listening on %s %s'%(self.host, self.port))
             self.sock.setblocking(False)
