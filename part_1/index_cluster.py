@@ -88,13 +88,13 @@ class IndexWorkerNode(WorkerNode):
         if not os.path.exists(os.path.abspath(os.path.join(indexer_map_dir_path, raw_input_file_name))):
             lock = Lock()
             lock.acquire()
-            print(os.path.abspath(os.path.join(indexer_map_dir_path, raw_input_file_name)))
             pathlib.Path(os.path.abspath(os.path.join(indexer_map_dir_path, raw_input_file_name))).mkdir(parents=True, exist_ok=True)
             lock.release()
 
-        input_file_dir = os.path.join(os.path.abspath(indexer_map_dir_path), raw_input_file_name)
-        input_mapper_file = os.path.join(input_file_dir, input_file_name + "&Mapper" + str(self.port) + '.txt')
-        print(input_mapper_file)
+        input_file_dir = os.path.abspath(os.path.join(indexer_map_dir_path, raw_input_file_name))
+
+        map_file_name = raw_input_file_name + "&Mapper" + str(self.port) + '.txt'
+        input_mapper_file = os.path.join(input_file_dir, map_file_name )
         myMapFile = open(os.path.abspath(input_mapper_file), "w+")
         finalArray = []
         fp = open(task_obj.get("dir"),'r')
