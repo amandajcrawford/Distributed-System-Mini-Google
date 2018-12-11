@@ -54,9 +54,10 @@ class ProcessNode(Process):
     def run(self):
         self.selector = selectors.DefaultSelector()
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.sock.bind((self.host, self.port))
         self.sock.listen()
-        logger.info('listening on %s %s'%(self.host, self.port))
+        # logger.info('listening on %s %s'%(self.host, self.port))
         self.sock.setblocking(False)
         self.selector.register(self.sock, selectors.EVENT_READ, data=self.data)
         atexit.register(self.shutdown)
@@ -75,7 +76,7 @@ class ProcessNode(Process):
 
     def accept_wrapper(self, sock):
         conn, addr = sock.accept()  # Should be ready to read
-        logger.info('accepted connection from '+str(addr))
+        # logger.info('accepted connection from '+str(addr))
         conn.setblocking(False)
         data = types.SimpleNamespace(addr=addr, inb=b'', outb=b'')
         events = selectors.EVENT_READ | selectors.EVENT_WRITE
@@ -91,21 +92,21 @@ class ProcessNode(Process):
         if mask & selectors.EVENT_READ:
             recv_data = sock.recv(4098)  # Should be ready to read
             if recv_data:
-                logger.info('received '+repr(recv_data)+ ' from connection '+ str(data.addr))
+                # logger.info('received '+repr(recv_data)+ ' from connection '+ str(data.addr))
                 # Handle request using child method
                 if hasattr(self, 'handle_request') and callable(self.handle_request):
                     data.outb = self.handle_request(sock, data, recv_data)
                 else:
                     data.outb += recv_data
             else:
-                logger.info('closing connection ' + str(data.addr))
+                # logger.info('closing connection ' + str(data.addr))
                 self.selector.unregister(sock)
                 if hasattr(self, 'handle_disconnect') and callable(self.handle_disconnect):
                     self.handle_disconnect(data, sock)
                 sock.close()
         if mask & selectors.EVENT_WRITE:
             if data.outb:
-                logger.info("sending "+ repr(data.outb)+" to "+ str(data.addr))
+                # logger.info("sending "+ repr(data.outb)+" to "+ str(data.addr))
                 sent = sock.send(data.outb)  # Should be ready to write
                 data.outb = data.outb[sent:]
                 #print(data.outb)
@@ -139,12 +140,12 @@ class MasterNode(ProcessNode):
         received = received.decode("utf-8")
         parser = MessageParser()
         parsed = parser.parse(received)
-        logger.info('Parsed Message: '+repr(parsed)+'')
+        # logger.info('Parsed Message: '+repr(parsed)+'')
 
         # Check if new client is  worker node
         if parsed.type == 'worker':
             if parsed.action == 'connect':
-                logger.info('Adding new worker node to list')
+                # logger.info('Adding new worker node to list')
 
                 worker_port = parsed.port
                 worker_host = parsed.host
@@ -152,13 +153,13 @@ class MasterNode(ProcessNode):
 
                 # if worker node, check if we need to add to self.worker_conns with conn
                 if worker_ip not in self.worker_conns:
-                    logger.info("Adding worker node %s to master list" %str(worker_port))
+                    # logger.info("Adding worker node %s to master list" %str(worker_port))
                     self.worker_conns[worker_ip] = conn
                     #logger.info("Num Workers %s"%self.worker_conns.keys())
 
                     #check to see if initial workers are connected
                     if len(self.worker_conns.keys()) == self.num_workers:
-                        logger.info("All worker nodes are connected")
+                        # logger.info("All worker nodes are connected")
                         self.worker_status = self.ALL_CONNECTED
                     else:
                         self.worker_status = self.PARTIAL_CONNECTED
@@ -200,10 +201,10 @@ class WorkerNode(ProcessNode):
         resp = sock.connect_ex(self.master_addr)
         #print(resp)
         if resp == 0:
-            logger.info('Worker Node %s failed to connect to master node'%str(self.port))
+            # logger.info('Worker Node %s failed to connect to master node'%str(self.port))
             raise ChildProcessError('Worker %s not able to connect to master' %self.port)
         events = selectors.EVENT_READ | selectors.EVENT_WRITE
-        logger.info('Worker Node %s connecting to master node'%str(self.port))
+        # logger.info('Worker Node %s connecting to master node'%str(self.port))
         # creates a registration message to send to master node
         message = MessageBuilder(messages=[])
         message.add_registration_message(self.host, self.port)
@@ -215,13 +216,13 @@ class WorkerNode(ProcessNode):
         # add data to be sent to master
         try:
             sock.send(messages)
-            logging.info('Worker Node %s connected to master node'%str(self.port))
+            # logging.info('Worker Node %s connected to master node'%str(self.port))
             self.master_conn = sock
         except:
             # retry before failing
             time.sleep(3)
             sock.send(messages)
-            logging.info('Worker Node %s failed to connect to master node'%str(self.port))
+            # logging.info('Worker Node %s failed to connect to master node'%str(self.port))
             self.master_conn = sock
             # Master must have fatally failed
             exit(1)
@@ -265,7 +266,9 @@ class MessageParser:
             return self.parsed
 
         # Split string based on MessageBuilder Format
+        
         arr = message.lower().replace(" ", "").split("|")
+        self.aux = message.replace(" ","").split("|")
         if len(arr) < 2:
             return self.parsed
         self.arr = arr
@@ -276,7 +279,6 @@ class MessageParser:
         sender_port = int(arr[3])
         self.parsed.host = sender_host
         self.parsed.port = sender_port
-
         if sender_type == 'master':
             self.parsed.type = 'master'
             self.parse_master_message()
@@ -296,16 +298,16 @@ class MessageParser:
 
         if command == 'map':
             self.parsed.action = 'map'
-            self.parsed.map_dir = self.arr[5]
-            range = self.arr[6].split("-")
-            self.parsed.map_range_start = range[0]
-            self.parsed.map_range_end = range[1]
+            self.parsed.map_dir = self.aux[5]
+            rangeLines = self.arr[6].split("-")
+            self.parsed.map_range_start = rangeLines[0]
+            self.parsed.map_range_end = rangeLines[1]
         elif command == 'reduce':
             self.parsed.action = 'reduce'
-            self.parsed.dir = self.arr[5]
-            range = self.arr[6].split("-")
-            self.parsed.red_start_letter = range[0]
-            self.parsed.red_end_letter = range[1]
+            self.parsed.red_dir = self.aux[5]
+            rangeLines = self.arr[6].split("-")
+            self.parsed.red_start_letter = rangeLines[0]
+            self.parsed.red_end_letter = rangeLines[1]
         elif command == 'search':
             self.parsed.action = 'search'
             self.parsed.keywords = self.arr[5].split(',')
