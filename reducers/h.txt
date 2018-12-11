@@ -1,0 +1,10 @@
+higher inputtest1:1
+however inputtest1:3
+help inputtest1:1
+high inputtest1:2
+highest inputtest1:1
+hour inputtest1:1
+huge inputtest1:2
+hundred inputtest1:1
+human inputtest1:1
+humans inputtest1:2

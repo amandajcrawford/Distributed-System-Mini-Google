@@ -1,0 +1,3 @@
+job inputtest1:1
+jeopardy inputtest1:1
+john inputtest1:1

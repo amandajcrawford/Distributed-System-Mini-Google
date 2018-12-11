@@ -1,0 +1,8 @@
+fire inputtest1:2
+fires inputtest1:2
+fastest inputtest1:1
+firing inputtest1:2
+flow inputtest1:1
+flows inputtest1:1
+follow inputtest1:1
+frequency inputtest1:3

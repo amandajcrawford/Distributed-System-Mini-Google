@@ -1,0 +1,10 @@
+occurs inputtest1:1
+order inputtest1:2
+originating inputtest1:1
+output inputtest1:5
+often inputtest1:2
+operations inputtest1:7
+opponent inputtest1:1
+optimal inputtest1:1
+one inputtest1:1
+others inputtest1:1

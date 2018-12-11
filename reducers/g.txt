@@ -1,0 +1,6 @@
+given inputtest1:2
+graded inputtest1:1
+games inputtest1:1
+global inputtest1:1
+go inputtest1:1
+good inputtest1:1

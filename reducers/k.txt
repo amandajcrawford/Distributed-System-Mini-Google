@@ -1,0 +1,2 @@
+kinds inputtest1:1
+knowledge inputtest1:1

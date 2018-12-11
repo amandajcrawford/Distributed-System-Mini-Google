@@ -1,0 +1,5 @@
+values inputtest1:2
+vary inputtest1:1
+volitional inputtest1:1
+variability inputtest1:1
+von inputtest1:1
