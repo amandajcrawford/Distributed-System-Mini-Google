@@ -82,38 +82,38 @@ class IndexWorkerNode(WorkerNode):
         begin = int(task_obj.get("start"))
         end = int(task_obj.get("end"))
         indexer_map_dir_path = os.path.join(os.path.dirname(
-            os.path.abspath(__name__)), os.path.join('indexer','map'))
-        print(indexer_map_dir_path)
-        raw_input_file_name = input_file_name.split(".")[0]
-        print(os.path.abspath(os.path.join(indexer_map_dir_path, raw_input_file_name)))
-        print(raw_input_file_name[0])
-        # if not os.path.exists(os.path.abspath(os.path.join(indexer_map_dir_path, raw_input_file_name))):
-        #     lock = Lock()
-        #     lock.acquire()
-        #     os.mkdir(os.path.join(indexer_map_dir_path, raw_input_file_name))
-        #     lock.release()
-        # input_file_dir = os.path.join(os.path.abspath(indexer_map_dir_path), raw_input_file_name)
-        # input_mapper_file = os.path.join(input_file_dir, input_file_name + "&Mapper" + str(self.port) + '.txt')
-        # print(input_mapper_file)
-        # myMapFile = open(os.path.abspath(input_mapper_file), "w+")
-        # finalArray = []
-        # fp = open(task_obj.get("dir"),'r')
-        # for i,line in enumerate(fp):
-        #     if i>= begin and i < end:
-        #         # Remove special characters characters from the line: , . : ; ... and numbers
-        #         # add 0-9 to re to keep numbers 
-        #         # Make all words to lower case
-        #         line = re.sub('[^A-Za-z]+', ' ', line).lower()
-        #         # Tokenize the words into vector of words
-        #         word_tokens = word_tokenize(line)
-        #         # Remove non-stop words
-        #         [finalArray.append(word) for word in word_tokens if word not in stop_words]
-        # finalArray.sort()
-        # for i in finalArray:
-        #     myMapFile.write(i + "," + str(1) + "\n")
-        # myMapFile.close()
-        # fp.close()
-        # self.queueOfJobs.get()
+            os.path.abspath(__file__)), os.path.join('indexer','map'))
+
+        raw_input_file_name = os.path.basename(input_file_name).split(".")[0]
+        if not os.path.exists(os.path.abspath(os.path.join(indexer_map_dir_path, raw_input_file_name))):
+            lock = Lock()
+            lock.acquire()
+            print(os.path.abspath(os.path.join(indexer_map_dir_path, raw_input_file_name)))
+            pathlib.Path(os.path.abspath(os.path.join(indexer_map_dir_path, raw_input_file_name))).mkdir(parents=True, exist_ok=True)
+            lock.release()
+
+        input_file_dir = os.path.join(os.path.abspath(indexer_map_dir_path), raw_input_file_name)
+        input_mapper_file = os.path.join(input_file_dir, input_file_name + "&Mapper" + str(self.port) + '.txt')
+        print(input_mapper_file)
+        myMapFile = open(os.path.abspath(input_mapper_file), "w+")
+        finalArray = []
+        fp = open(task_obj.get("dir"),'r')
+        for i,line in enumerate(fp):
+            if i>= begin and i < end:
+                # Remove special characters characters from the line: , . : ; ... and numbers
+                # add 0-9 to re to keep numbers 
+                # Make all words to lower case
+                line = re.sub('[^A-Za-z]+', ' ', line).lower()
+                # Tokenize the words into vector of words
+                word_tokens = word_tokenize(line)
+                # Remove non-stop words
+                [finalArray.append(word) for word in word_tokens if word not in stop_words]
+        finalArray.sort()
+        for i in finalArray:
+            myMapFile.write(i + "," + str(1) + "\n")
+        myMapFile.close()
+        fp.close()
+       
 
     def handle_map_task(self, message):
         directory = message.map_dir
