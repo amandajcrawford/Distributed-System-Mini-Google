@@ -90,7 +90,6 @@ class SearchWorkerNode(WorkerNode):
                 results[kw] = self.local_index_partition[kw]
                 logger.info('+++++++ Found Keyword Data for %s: %s ++++++++++'%(kw, str(results[kw])))
                 
-
         # send master node result
         builder = MessageBuilder()
         builder.clear()
@@ -98,6 +97,7 @@ class SearchWorkerNode(WorkerNode):
         message = builder.build()
         self.master_conn.send(message.outb)
         builder.clear()
+
 
     def handle_index(self):
         while True:
@@ -118,8 +118,6 @@ class SearchWorkerNode(WorkerNode):
                 print(self.local_index_partition)
                 self.index_ready = True
                 self.index_update = False
-            # Handle File Change Updates
-
 
 
 class SearchMasterNode(MasterNode):
@@ -151,6 +149,9 @@ class SearchMasterNode(MasterNode):
 
     def start_master(self):
         logger.info('Starting Search Query Master')
+        # check if index dir is accurate
+        if not os.path.isdir(self.index_dir):
+            sys.exit("Index Directory Not Found.... Exiting")
         # Run a concurrent thread to handle ranking jobs
         master_job_thread = threading.Thread(target=self.handle_task_jobs)
         master_job_thread.start()
@@ -159,6 +160,8 @@ class SearchMasterNode(MasterNode):
         master_index_watcher_thread = threading.Thread(target=self.handle_index_updates)
         master_index_watcher_thread.start()
         #self.host = socket.gethostname()
+
+
 
     def handle_failed_worker(self, conn, data, worker):
         logger.info('Worker %s failed attempting to restart' %str(worker))
@@ -207,6 +210,7 @@ class SearchMasterNode(MasterNode):
             except:
                 logger.info('Failed to send response to client %s', parsed.clientid)
 
+
     def handle_worker_message(self, parsed, conn):
         # Get worker sys information
         worker = (parsed.host, parsed.port)
@@ -251,8 +255,8 @@ class SearchMasterNode(MasterNode):
                     self.process_task()
                     self.continue_to_next_task = True
 
-    def process_task(self):
 
+    def process_task(self):
         #Get task from queue
         task = self.task_queue[-1]
         self.task_queue.remove(task)
@@ -301,11 +305,11 @@ class SearchMasterNode(MasterNode):
             except:
                 logger.info('====> Failed to send job %s to worker %s'%(str(kw_job), worker))
                 
-
         # will process task once all jobs has been fulfilled
         logger.info('====> Sent jobs for task %d with %s keywords......waiting for %d tasks to complete.'%(task_id, str(kwds), sub_tasks))
         self.task_map[task_id] = task
         self.partial_task.append(int(task_id))
+
 
     def handle_ranking_jobs(self):
         logger.info('Waiting for new rank jobs')
@@ -378,23 +382,28 @@ class SearchMasterNode(MasterNode):
     def handle_index_updates(self):
         start = True
         self.__index_update = False
+        self.orig_dir = self.index_dir
+        self.index_changed = False
         while True:
             if not self.__index_update:
+                self.index_changed = False
                 new_index_dir = ""
                 # Checking if index has been updated 
-                up_file = pathlib.Path(os.path.join(self.index_dir, 'pointer.txt'), 'r') 
+                up_file = pathlib.Path(os.path.join(self.orig_dir, 'updated.txt')) 
                 if up_file.is_file():
-                    with open(os.path.join(self.index_dir, 'pointer.txt'), 'r') as up_file:
+                    with open(os.path.join(self.orig_dir, 'updated.txt'), 'r') as up_file:
                         # Get the first line only
                         new_index_dir = up_file.readline()
-                
+                    
                     # Check to see if new index actually exists
                     if new_index_dir and pathlib.Path(new_index_dir).is_dir() and self.index_dir != new_index_dir:
                         logger.info('New Index System Found Index: %s'%new_index_dir)
                         self.index_dir = new_index_dir
                         self.__index_update = True
+                        self.index_changed = True
                 if start:
                     self.__index_update = True
+                    self.index_changed = True
                     start = False 
 
             if self.__index_update:
@@ -403,10 +412,9 @@ class SearchMasterNode(MasterNode):
                 self.index_ready = False       
                 # Loop through index directory
                 for file in os.listdir(self.index_dir):
-                    if file.endswith(".txt"):
+                    if file.endswith(".txt") and not file.startswith('updated'):
                         letter = file.split('.')[0]
                         letter_file = os.path.join(self.index_dir, file)
-                        #print(letter, letter_file)
                         new_index[letter]= {'file':letter_file}
                         
                         #Compute the number of lines in file
@@ -424,20 +432,20 @@ class SearchMasterNode(MasterNode):
             worker_sys = self.worker_sys.items()
             worker_index = self.worker_index.items()
             
-            if self.index_ready and len(worker_sys) > 0:
+            if (self.index_ready and len(worker_sys) > 0):
                 # check to see if we have any new workers
                 new_worker = False
                 # sort index by size
                 index_sorted = sorted(self.index_system.items(), key=lambda kv: kv[1]['size'])
-
+                print("here")
                 # sort server by mem
                 worked_sorted = sorted(worker_sys, key=lambda kv: kv[1]['mem'])
                 for worker, index in worker_index:
                     if len(index) == 0 and worker is not None:
                         new_worker = True
                 
-                if new_worker is True:
-
+                if new_worker or self.index_changed:
+                    # Compute partitions
                     num_ranges = math.floor(len(index_sorted)/len(worked_sorted))
                     i = 0
                     for worker in worked_sorted:
@@ -453,13 +461,7 @@ class SearchMasterNode(MasterNode):
                         partition = index_sorted[p_begin:p_end]
                         kw_assignment = [kv[0] for  kv in partition]
                         for k, v in partition:
-
                             self.index_worker_map[k] = worker
-                        # ordered = sorted(partition, key=lambda kv: ord(kv[0]))
-
-                        # start = ordered[0][0]
-                        # end = ordered[-1][0]
-
 
                         # send worker assignment message
                         builder = MessageBuilder()
@@ -471,7 +473,7 @@ class SearchMasterNode(MasterNode):
                         
                         i += 1
                 
-        return
+        
 
 
 class SearchCluster:
@@ -554,12 +556,13 @@ class SearchCluster:
         except:
             exit(1)
 
+
 class SearchClient:
     def __init__(self, index_dir, num_nodes, host='localhost', port=9890):
         self.num_nodes = num_nodes
         self.index_dir = index_dir
         self.master_host = host
-        self.master_port = 56723
+        self.master_port = 56724
 
     def start(self):
         master_ip = (self.master_host, self.master_port)
@@ -568,6 +571,6 @@ class SearchClient:
 
 
 if __name__ == "__main__":
-   input_dir = os.path.join(os.path.dirname(os.path.abspath(__name__)),'indexer/index')
+   input_dir = os.path.abspath(os.path.join(pathlib.Path(os.path.dirname(__file__)), 'reducers'))
    search = SearchClient(input_dir, 2)
    search.start()

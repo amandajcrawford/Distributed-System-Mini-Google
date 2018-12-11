@@ -53,27 +53,31 @@ class ProcessNode(Process):
 
 
     def run(self):
-        self.selector = selectors.DefaultSelector()
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock.bind((self.host, self.port))
-        self.sock.listen()
-        logger.info('listening on %s %s'%(self.host, self.port))
-        self.sock.setblocking(False)
-        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.selector.register(self.sock, selectors.EVENT_READ, data=self.data)
-        # atexit.register(self.shutdown)
-        self.host = socket.gethostname()
-        # Call child start function for any pre server interaction
-        if hasattr(self, 'handle_start') and callable(self.handle_start):
-            self.handle_start()
+        try:
+            self.selector = selectors.DefaultSelector()
+            self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.sock.bind((self.host, self.port))
+            self.sock.listen()
+        except Exception as e:
+            raise Error('Failed to connect to master node')
+        finally:
+            logger.info('listening on %s %s'%(self.host, self.port))
+            self.sock.setblocking(False)
+            self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.selector.register(self.sock, selectors.EVENT_READ, data=self.data)
+            # atexit.register(self.shutdown)
+            self.host = socket.gethostname()
+            # Call child start function for any pre server interaction
+            if hasattr(self, 'handle_start') and callable(self.handle_start):
+                self.handle_start()
 
-        while True:
-            events = self.selector.select(timeout=None)
-            for key, mask in events:
-                if key.data is None:
-                    self.accept_wrapper(key.fileobj)
-                else:
-                    self.service_connection(key, mask)
+            while True:
+                events = self.selector.select(timeout=None)
+                for key, mask in events:
+                    if key.data is None:
+                        self.accept_wrapper(key.fileobj)
+                    else:
+                        self.service_connection(key, mask)
 
     def accept_wrapper(self, sock):
         conn, addr = sock.accept()  # Should be ready to read
