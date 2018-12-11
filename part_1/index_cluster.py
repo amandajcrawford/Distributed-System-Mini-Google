@@ -10,6 +10,7 @@ import numpy as np
 import math
 import pdb
 import time
+import threading 
 from multiprocessing import Process, JoinableQueue, current_process, Lock
 from base import MasterNode, WorkerNode, MessageBuilder, MessageParser, logger
 from map_reduce import MapReduceProcess
@@ -30,18 +31,16 @@ class IndexWorkerNode(WorkerNode):
     def __init__(self, host, port, worker_num, map_dir, red_dir):
         self.map_dir = map_dir
         self.red_dir = red_dir
-        return super(IndexWorkerNode, self).__init__(host, port, worker_num)
+        self.task_queue = []
+        self.map_task_queue = []
+        super(IndexWorkerNode, self).__init__(host, port, worker_num)
 
     def start_worker(self):
         self.curr_task = self.FREE
         self.task_status = self.NOT_COMPLETED
-        # loop = asyncio.get_event_loop()
-        # start map reduce process  that pulls from task queue
-        task_queue = JoinableQueue()
-        # self.map_reduce_engine = MapReduceProcess(task_queue)
-        # self.map_reduce_engine.start()
-        # self.map_reduce_engine.join()
-        self.task_queue = task_queue
+
+        self.map_queue_handler = threading.Thread(target=self.map_queue_handler)
+        self.map_queue_handler.start()
 
     def handle_request(self, conn, addr, received):
 
@@ -56,6 +55,20 @@ class IndexWorkerNode(WorkerNode):
 
         if task == 'reduce':
             self.handle_reduce_task(parsed)
+    
+    def map_queue_handler(self):
+        self.mapper_free = True
+        while True:
+            try:
+                if len(self.map_task_queue) > 0 and self.mapper_free:
+                    self.mapper_free = False
+                    task_obj = self.map_task_queue[-1]
+                    print(task_obj)
+                    self.map_task_queue.remove(task_obj)
+                    self.map_task(task_obj)
+                    self.mapper_free = True
+            except:
+                break
 
     def map_task(self, task_obj):
         import re
@@ -69,33 +82,37 @@ class IndexWorkerNode(WorkerNode):
         begin = int(task_obj.get("start"))
         end = int(task_obj.get("end"))
         indexer_map_dir_path = os.path.join(os.path.dirname(
-            os.path.abspath(__name__)), 'indexer/map/')
+            os.path.abspath(__name__)), os.path.join('indexer','map'))
+        print(indexer_map_dir_path)
         raw_input_file_name = input_file_name.split(".")[0]
-        if not os.path.exists(os.path.abspath(os.path.join(indexer_map_dir_path, raw_input_file_name))):
-            lock = Lock()
-            lock.acquire()
-            os.mkdir(os.path.join(indexer_map_dir_path, raw_input_file_name))
-            lock.release()
-        newFileMap = indexer_map_dir_path + raw_input_file_name + \
-            '/' + input_file_name + "&Mapper" + str(self.port) + '.txt'
-        myMapFile = open(newFileMap, "w+")
-        finalArray = []
-        fp = open(task_obj.get("dir"),'r')
-        for i,line in enumerate(fp):
-            if i>= begin and i < end:
-                # Remove special characters characters from the line: , . : ; ... and numbers
-                # add 0-9 to re to keep numbers 
-                # Make all words to lower case
-                line = re.sub('[^A-Za-z]+', ' ', line).lower()
-                # Tokenize the words into vector of words
-                word_tokens = word_tokenize(line)
-                # Remove non-stop words
-                [finalArray.append(word) for word in word_tokens if word not in stop_words]
-        finalArray.sort()
-        for i in finalArray:
-            myMapFile.write(i + "," + str(1) + "\n")
-        myMapFile.close()
-        fp.close()
+        print(os.path.abspath(os.path.join(indexer_map_dir_path, raw_input_file_name)))
+        print(raw_input_file_name[0])
+        # if not os.path.exists(os.path.abspath(os.path.join(indexer_map_dir_path, raw_input_file_name))):
+        #     lock = Lock()
+        #     lock.acquire()
+        #     os.mkdir(os.path.join(indexer_map_dir_path, raw_input_file_name))
+        #     lock.release()
+        # input_file_dir = os.path.join(os.path.abspath(indexer_map_dir_path), raw_input_file_name)
+        # input_mapper_file = os.path.join(input_file_dir, input_file_name + "&Mapper" + str(self.port) + '.txt')
+        # print(input_mapper_file)
+        # myMapFile = open(os.path.abspath(input_mapper_file), "w+")
+        # finalArray = []
+        # fp = open(task_obj.get("dir"),'r')
+        # for i,line in enumerate(fp):
+        #     if i>= begin and i < end:
+        #         # Remove special characters characters from the line: , . : ; ... and numbers
+        #         # add 0-9 to re to keep numbers 
+        #         # Make all words to lower case
+        #         line = re.sub('[^A-Za-z]+', ' ', line).lower()
+        #         # Tokenize the words into vector of words
+        #         word_tokens = word_tokenize(line)
+        #         # Remove non-stop words
+        #         [finalArray.append(word) for word in word_tokens if word not in stop_words]
+        # finalArray.sort()
+        # for i in finalArray:
+        #     myMapFile.write(i + "," + str(1) + "\n")
+        # myMapFile.close()
+        # fp.close()
         # self.queueOfJobs.get()
 
     def handle_map_task(self, message):
@@ -112,10 +129,13 @@ class IndexWorkerNode(WorkerNode):
         # self.task_status = self.NOT_COMPLETED
         # self.curr_task = self.MAP
         # while not self.queueOfJobs.empty():
-        self.map_task(task_obj)
+
+        #self.map_task(task_obj)
+        
         #Set this mapper to Free status
         # self.task_status = self.FREE
         # self.curr_task = self.FREE
+        self.map_task_queue.append(task_obj)
 
     def handle_reduce_task(self, message):
         directory = message.red_dir
@@ -130,7 +150,8 @@ class IndexWorkerNode(WorkerNode):
         self.reduce_task(task_obj)
     
     def reduce_task(self,task_obj):
-        print(task_obj)
+        self.task_queue.append(task_obj)
+
         
 
 class IndexMasterNode(MasterNode):
@@ -150,7 +171,7 @@ class IndexMasterNode(MasterNode):
 
     def __init__(self, host, port, worker_num, index):
         self.index_dir = index
-        return super(IndexMasterNode, self).__init__(host, port, worker_num)
+        super(IndexMasterNode, self).__init__(host, port, worker_num)
 
     def start_master(self):
         # Handles iterating through job stages
@@ -253,12 +274,15 @@ class IndexMasterNode(MasterNode):
                 y = 0
                 worker, letters = 0, 26
                 pathToSend = os.path.join(dire,directory + '/' + iFile)
-                print(pathToSend)
+                #print(pathToSend)
                 while (letters - letterPerWorker) > 0:
                     k = y
                     y += letterPerWorker
                     builder.add_task_reduce_message(self.host, self.port, pathToSend, k, y)
                     message = builder.build()
+                    builder.clear()
+                    #print("sending to worker", worker)
+                    #print(message.outb)
                     worker_conn = self.worker_conns[worker_keys[worker]]
                     worker_conn.send(message.outb)
                     letters -= letterPerWorker

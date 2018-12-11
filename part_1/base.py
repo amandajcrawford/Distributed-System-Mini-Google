@@ -97,7 +97,7 @@ class ProcessNode(Process):
         if mask & selectors.EVENT_READ:
             recv_data = sock.recv(4098)  # Should be ready to read
             if recv_data:
-                # logger.info('received '+repr(recv_data)+ ' from connection '+ str(data.addr))
+                logger.info('received '+repr(recv_data)+ ' from connection '+ str(data.addr))
                 # Handle request using child method
                 if hasattr(self, 'handle_request') and callable(self.handle_request):
                     data.outb = self.handle_request(sock, data, recv_data)
@@ -387,6 +387,7 @@ class MessageBuilder:
         cpu_info = psutil.cpu_times().system
         mem_info = psutil.virtual_memory().percent
         message = self.messages[-1].decode('utf-8')
+        print(message)
         info = "%s | %s |"%(str(mem_info), str(cpu_info))
         message = message + info
         self.outb = bytes(message, "utf-8")
