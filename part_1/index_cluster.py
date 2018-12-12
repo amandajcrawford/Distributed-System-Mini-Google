@@ -39,11 +39,10 @@ class IndexWorkerNode(WorkerNode):
         self.curr_task = self.FREE
         self.task_status = self.NOT_COMPLETED
 
-        self.map_queue_handler = threading.Thread(target=self.map_queue_handler)
-        self.map_queue_handler.start()
+        # self.map_queue_handler = threading.Thread(target = self.map_queue_handler)
+        # self.map_queue_handler.start()
 
     def handle_request(self, conn, addr, received):
-
         # Parse Message
         received = received.decode("utf-8")
         parser = MessageParser()
@@ -60,13 +59,19 @@ class IndexWorkerNode(WorkerNode):
         self.mapper_free = True
         while True:
             try:
-                if len(self.map_task_queue) > 0 and self.mapper_free:
+                if len(self.map_task_queue) > 0 and self.mapper_free:    
                     self.mapper_free = False
-                    task_obj = self.map_task_queue[-1]
-                    self.map_task_queue.remove(task_obj)
+                    task_obj = self.map_task_queue[0]
+                    print(task_obj)
                     self.map_task(task_obj)
+                    self.map_task_queue.remove(task_obj)
                     self.mapper_free = True
-            except:
+                # This is false because mapper has to tell master he has ended
+                # if len(self.map_task_queue) == 0 and not self.mapper_free:
+                #     self.mapper_free = True
+                #     
+            except Exception as e:
+                print(e)
                 break
 
     def map_task(self, task_obj):
@@ -89,12 +94,10 @@ class IndexWorkerNode(WorkerNode):
             lock.acquire()
             pathlib.Path(os.path.abspath(os.path.join(indexer_map_dir_path, raw_input_file_name))).mkdir(parents=True, exist_ok=True)
             lock.release()
-
         input_file_dir = os.path.abspath(os.path.join(indexer_map_dir_path, raw_input_file_name))
 
-        map_file_name = raw_input_file_name + "&Mapper" + str(self.port) + '.txt'
+        map_file_name = raw_input_file_name + "&Mapper" + str(self.port)
         input_mapper_file = os.path.join(input_file_dir, map_file_name )
-        myMapFile = open(os.path.abspath(input_mapper_file), "w+")
         finalArray = []
         fp = open(task_obj.get("dir"),'r')
         for i,line in enumerate(fp):
@@ -109,11 +112,16 @@ class IndexWorkerNode(WorkerNode):
                 [finalArray.append(word) for word in word_tokens if word not in stop_words]
         finalArray.sort()
         for i in finalArray:
-            myMapFile.write(i + "," + str(1) + "\n")
-        myMapFile.close()
+            if os.path.exists(os.path.abspath(input_mapper_file + '&' + i[0] + '.txt')):
+                f = open(os.path.abspath(input_mapper_file + '&' + i[0] + '.txt'),'a+')
+            else:
+                f = open(os.path.abspath(input_mapper_file + '&' + i[0] + '.txt'),'w+')
+            f.write(i + "," + str(1) + "\n")
+            f.close()
         fp.close()
-       
 
+        # Send complete status to master ----> Need to add in an id for task to map-1
+       
     def handle_map_task(self, message):
         directory = message.map_dir
         start = message.map_range_start
@@ -124,17 +132,11 @@ class IndexWorkerNode(WorkerNode):
             'start': start,
             'end': end
         }
-        # self.queueOfJobs.put(task_obj)
-        # self.task_status = self.NOT_COMPLETED
-        # self.curr_task = self.MAP
-        # while not self.queueOfJobs.empty():
-
-        #self.map_task(task_obj)
-        
-        #Set this mapper to Free status
-        # self.task_status = self.FREE
-        # self.curr_task = self.FREE
         self.map_task_queue.append(task_obj)
+        while len(self.map_task_queue) > 0:
+            task = self.map_task_queue[0]
+            self.map_task(task)
+            self.map_task_queue.pop()
 
     def handle_reduce_task(self, message):
         directory = message.red_dir
@@ -151,11 +153,9 @@ class IndexWorkerNode(WorkerNode):
     def reduce_task(self,task_obj):
         self.task_queue.append(task_obj)
 
-        
 
 class IndexMasterNode(MasterNode):
     # Job Stages
-    PARTITION = 1
     MAP = 2
     REDUCE = 3
 
@@ -174,14 +174,13 @@ class IndexMasterNode(MasterNode):
 
     def start_master(self):
         # Handles iterating through job stages
-        self.curr_job = self.PARTITION  # Partition or Map or Reduce
+        self.curr_job = self.MAP  # Partition or Map or Reduce
         self.job_status = self.NOT_STARTED
         self.index_status = self.RUNNING
 
-        # Directory where partitions are stored
-        self.storage_dir = '\partions'
-
-        # logger.info('Starting Indexing Job')
+        # Map and Reduce Task Information
+        self.map_tasksmap = [] # array of map_task_id 
+        self.reduce_taskmap = []
 
     def handle_request(self, conn, addr, received):
         # Call this first to make sure worker nodes are being added to list
@@ -197,17 +196,13 @@ class IndexMasterNode(MasterNode):
         # Check to see if we have all the workers connected and ready
         #logger.info("Worker Status %s"%self.worker_status)
         if self.worker_status == self.ALL_CONNECTED:
-            if (self.curr_job == self.PARTITION) & (self.job_status == self.NOT_STARTED):
-                # logger.info('Partitioning Index Files For Worker Nodes')
+            if (self.curr_job == self.MAP) & (self.job_status == self.NOT_STARTED):
+                logger.info('Partitioning Index Files For Worker Nodes Map Tasks')
+                arrayOfFilesAndSize = self.populateArrayOfFilesAndSize(self.index_dir)
                 self.job_status = self.IN_PROGRESS
-                arrayOfFilesAndSize = self.populateArrayOfFilesAndSize(
-                    self.index_dir)
-                # is it better to read then distribute the blocks, or distribute while reading?
-                # We should read then distribute
                 self.distributeJobToMappers(arrayOfFilesAndSize)
-                #Master Node now has to call reducers
-                # indexer/map/
-                self.distributeJobToReducers(os.path.join(os.path.dirname(__file__),'indexer/map'))
+            # if self.curr_job == self.REDUCE and self.job_status == self.NOT_STARTED:
+                # self.distributeJobToReducers(os.path.join(os.path.dirname(__file__),'indexer/map'))
 
     def populateArrayOfFilesAndSize(self, path):
         files = os.listdir(os.path.abspath(path))
@@ -236,9 +231,11 @@ class IndexMasterNode(MasterNode):
             'path/to/file': int number_of_lines}
             The function then distributes each block to each Mapper
         """
+        count = 0
         worker_keys = list(self.worker_conns.keys())
         builder = MessageBuilder(messages=[])
         for i in arrayOfDictionariesOfFilesPaths:
+            count+=1
             k = i
             fi = list(k.keys())[0]
             k = list(k.values())[0]
@@ -254,12 +251,11 @@ class IndexMasterNode(MasterNode):
                 worker_conn.send(message.outb)
                 lines -= t
                 worker += 1
-            builder.add_task_map_message(
-                self.host, self.port, fi, y, (list(i.values())[0]))
+            builder.add_task_map_message(self.host, self.port, fi, y, (list(i.values())[0]))
             message = builder.build()
             worker_conn = self.worker_conns[worker_keys[worker]]
             worker_conn.send(message.outb)
-            break
+            # while len(self.map_tasksmap) > 0:
 
     def distributeJobToReducers(self,path):
         files = os.listdir(path)
@@ -292,11 +288,7 @@ class IndexMasterNode(MasterNode):
                 worker_conn.send(message.outb)
 
         
-            
-
-
 class IndexCluster:
-
     def __init__(self, master_addr, worker_num, index_dir):
         if not master_addr:
             self.master_addr = ("localhost", 8956)
@@ -367,7 +359,6 @@ class IndexCluster:
         for node in nodes:
             node.join()
 
-
 class IndexClient:
 
     def __init__(self, index_dir, num_nodes, host='localhost', port=9803):
@@ -380,7 +371,6 @@ class IndexClient:
         ip = (self.master_host, self.master_port)
         inx = IndexCluster(ip, self.num_nodes, self.index_dir)
         inx.start()
-
 
 if __name__ == "__main__":
     input_dir = os.path.join(os.path.dirname(

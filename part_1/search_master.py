@@ -60,7 +60,6 @@ def main():
     # Run Search Master Node if all configuration is fine
     try:
         master = SearchMasterNode(HOST, PORT, NUM_NODES, INDEX_DIR )
-        master.daemon = True
         master.start()
         master.join()
     except Exception as e:
