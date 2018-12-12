@@ -254,7 +254,7 @@ class SearchMasterNode(MasterNode):
         # Continously pull tasks from self.work_queue, process, and executed
         logger.info('Waiting for new task queries')
         while True:
-            if len(self.workers) > 0:
+            if len(self.worker_conns) > 0:
                 # check if self.work_queue has tasks ready to process
                 if self.continue_to_next_task and len(self.task_queue) > 0 and self.index_ready:
                     print('handling tasks')
