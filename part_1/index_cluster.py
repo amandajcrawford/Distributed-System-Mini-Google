@@ -281,6 +281,11 @@ class IndexWorkerNode(WorkerNode):
                                 #word + ' ' + arrays
                                 line = item + ' ' + filesAndCount
                                 f.write(line)
+        builder = MessageBuilder(messages=[])
+        builder.add_reduce_complete_message(self.host, self.port, task_obj.get("task_id"))
+        message = builder.build()
+        self.master_conn.send(message.outb)
+        builder.clear()
 
 class IndexMasterNode(MasterNode):
     # Job Stages
