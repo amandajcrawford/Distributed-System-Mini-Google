@@ -1,4 +1,3 @@
-import asyncio
 import os
 import pathlib
 import shutil
@@ -14,9 +13,15 @@ import threading
 from multiprocessing import Process, JoinableQueue, current_process, Lock
 from base import MasterNode, WorkerNode, MessageBuilder, MessageParser, logger
 from map_reduce import MapReduceProcess
+import re
+import nltk
+from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize
 
 
+stop_words = set(stopwords.words('english'))
 class IndexWorkerNode(WorkerNode):
+    
     # TASK
     FREE = 9  # Available to start another task
     MAP = 10
@@ -26,7 +31,7 @@ class IndexWorkerNode(WorkerNode):
     COMPLETED = 5
     NOT_COMPLETED = 6
 
-    queueOfJobs = queue.Queue()
+    # queueOfJobs = queue.Queue()
 
     def __init__(self, host, port, worker_num, map_dir, red_dir):
         self.map_dir = map_dir
@@ -39,8 +44,8 @@ class IndexWorkerNode(WorkerNode):
         self.curr_task = self.FREE
         self.task_status = self.NOT_COMPLETED
 
-        # self.map_queue_handler = threading.Thread(target = self.map_queue_handler)
-        # self.map_queue_handler.start()
+        self.map_queue_handler = threading.Thread(target = self.map_queue_handler)
+        self.map_queue_handler.start()
 
     def handle_request(self, conn, addr, received):
         # Parse Message
@@ -75,11 +80,7 @@ class IndexWorkerNode(WorkerNode):
                 break
 
     def map_task(self, task_obj):
-        import re
-        import nltk
-        from nltk.corpus import stopwords
-        from nltk.tokenize import word_tokenize
-        stop_words = set(stopwords.words('english'))
+        global stop_words
         dir_path = os.path.abspath(os.path.join(
             os.path.dirname(os.path.abspath(__name__)), '../inputs'))
         input_file_name = task_obj.get("dir").split("/")[-1:][0]
@@ -99,7 +100,8 @@ class IndexWorkerNode(WorkerNode):
         map_file_name = raw_input_file_name + "&Mapper" + str(self.port)
         input_mapper_file = os.path.join(input_file_dir, map_file_name )
         finalArray = []
-        fp = open(task_obj.get("dir"),'r')
+        fp = open(task_obj.get("dir"),'r', encoding="ISO-8859-1")
+        print(fp)
         for i,line in enumerate(fp):
             if i>= begin and i < end:
                 # Remove special characters characters from the line: , . : ; ... and numbers
@@ -113,9 +115,9 @@ class IndexWorkerNode(WorkerNode):
         finalArray.sort()
         for i in finalArray:
             if os.path.exists(os.path.abspath(input_mapper_file + '&' + i[0] + '.txt')):
-                f = open(os.path.abspath(input_mapper_file + '&' + i[0] + '.txt'),'a+')
+                f = open(os.path.abspath(input_mapper_file + '&' + i[0] + '.txt'),'a+',encoding="ISO-8859-1")
             else:
-                f = open(os.path.abspath(input_mapper_file + '&' + i[0] + '.txt'),'w+')
+                f = open(os.path.abspath(input_mapper_file + '&' + i[0] + '.txt'),'w+', encoding="ISO-8859-1")
             f.write(i + "," + str(1) + "\n")
             f.close()
         fp.close()
@@ -133,10 +135,10 @@ class IndexWorkerNode(WorkerNode):
             'end': end
         }
         self.map_task_queue.append(task_obj)
-        while len(self.map_task_queue) > 0:
-            task = self.map_task_queue[0]
-            self.map_task(task)
-            self.map_task_queue.pop()
+        # while len(self.map_task_queue) > 0:
+        #     task = self.map_task_queue[0]
+        #     self.map_task(task)
+        #     self.map_task_queue.pop()
 
     def handle_reduce_task(self, message):
         directory = message.red_dir
@@ -156,6 +158,7 @@ class IndexWorkerNode(WorkerNode):
 
 class IndexMasterNode(MasterNode):
     # Job Stages
+    PARTIOINING = 5
     MAP = 2
     REDUCE = 3
 
@@ -169,40 +172,56 @@ class IndexMasterNode(MasterNode):
     FINISHED = 8
 
     def __init__(self, host, port, worker_num, index):
-        self.index_dir = index
         super(IndexMasterNode, self).__init__(host, port, worker_num)
 
-    def start_master(self):
+        self.index_dir = index
         # Handles iterating through job stages
-        self.curr_job = self.MAP  # Partition or Map or Reduce
+        self.curr_job = self.PARTIOINING  # Partition or Map or Reduce
         self.job_status = self.NOT_STARTED
         self.index_status = self.RUNNING
+
+        #Index File
+        self.index_files = None
 
         # Map and Reduce Task Information
         self.map_tasksmap = [] # array of map_task_id 
         self.reduce_taskmap = []
+
+
+    def start_master(self):
+        # Starting Master and Background processes
+        master_bg = threading.Thread(target=self.master_bg)
+        master_bg.start()
+
+
+    def master_bg(self):
+        while True:
+            
+            if self.index_files is None and self.curr_job == self.PARTIOINING: 
+                # Can begin index partitioning work 
+                self.index_files = self.populateArrayOfFilesAndSize(self.index_dir)
+                self.curr_job = self.MAP
+                # Check to see if we have all the workers connected and ready
+            
+            
+            if self.worker_status == self.ALL_CONNECTED:
+                if (self.curr_job == self.MAP) and (self.job_status == self.NOT_STARTED) and self.index_files is not None:
+                    logger.info('Partitioning Index Files For Worker Nodes Map Tasks')
+                    self.job_status = self.IN_PROGRESS
+                    self.distributeJobToMappers(self.index_files)
+                # if self.curr_job == self.REDUCE and self.job_status == self.NOT_STARTED:
+                    # self.distributeJobToReducers(os.path.join(os.path.dirname(__file__),'indexer/map'))
+        return
 
     def handle_request(self, conn, addr, received):
         # Call this first to make sure worker nodes are being added to list
         super().handle_request(conn, addr, received)
 
         # Parse the message received from sender
-        # To add new message types to be sent update the MessageBuilder Class
-        # Also update the MessageParser class to get the values
         received = received.decode("utf-8")
         parser = MessageParser()
         parsed = parser.parse(received)
 
-        # Check to see if we have all the workers connected and ready
-        #logger.info("Worker Status %s"%self.worker_status)
-        if self.worker_status == self.ALL_CONNECTED:
-            if (self.curr_job == self.MAP) & (self.job_status == self.NOT_STARTED):
-                logger.info('Partitioning Index Files For Worker Nodes Map Tasks')
-                arrayOfFilesAndSize = self.populateArrayOfFilesAndSize(self.index_dir)
-                self.job_status = self.IN_PROGRESS
-                self.distributeJobToMappers(arrayOfFilesAndSize)
-            # if self.curr_job == self.REDUCE and self.job_status == self.NOT_STARTED:
-                # self.distributeJobToReducers(os.path.join(os.path.dirname(__file__),'indexer/map'))
 
     def populateArrayOfFilesAndSize(self, path):
         files = os.listdir(os.path.abspath(path))
@@ -223,6 +242,7 @@ class IndexMasterNode(MasterNode):
             f.close()
             arrayOfFilesAndSize = np.append(
                 arrayOfFilesAndSize, [{pathToFile: lines}])
+        logger.info("Index Files Found: %r"%arrayOfFilesAndSize)
         return arrayOfFilesAndSize
 
     def distributeJobToMappers(self, arrayOfDictionariesOfFilesPaths):
@@ -235,6 +255,7 @@ class IndexMasterNode(MasterNode):
         worker_keys = list(self.worker_conns.keys())
         builder = MessageBuilder(messages=[])
         for i in arrayOfDictionariesOfFilesPaths:
+            print("I am printing IIIIII",i)
             count+=1
             k = i
             fi = list(k.keys())[0]
@@ -332,7 +353,7 @@ class IndexCluster:
 
         # Load addresses for worker nodes
         addr_list = []
-        with open(os.path.join(os.path.dirname(__file__), 'hosts.txt'), 'r') as f:
+        with open(os.path.join(os.path.dirname(__file__), 'hosts.txt'), 'r', encoding="ISO-8859-1") as f:
             for line in f:
                 l = line.strip().split(' ')
                 addr = (l[0], int(l[1]))
