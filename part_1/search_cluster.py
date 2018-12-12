@@ -108,13 +108,16 @@ class SearchWorkerNode(WorkerNode):
                 # Load all keyword data into hashmap
                 for kw_filename in self.kw_file_list:
                     # Read data from file
-                    with open(kw_filename, 'r') as kw_file:
-                        for line in kw_file.readlines():
-                            line = line.strip()
-                            line_arr = line.split(" ")
-                            kw = line_arr[0].strip()
-                            documents = line_arr[1:]
-                            self.local_index_partition[kw] = documents
+                    try:
+                        with open(kw_filename, 'r') as kw_file:
+                            for line in kw_file.readlines():
+                                line = line.strip()
+                                line_arr = line.split(" ")
+                                kw = line_arr[0].strip()
+                                documents = line_arr[1:]
+                                self.local_index_partition[kw] = documents
+                    except:
+                        print("Could not load from file ", kw_filename)
                 self.index_ready = True
                 self.index_update = False
 
@@ -166,12 +169,13 @@ class SearchMasterNode(MasterNode):
 
     def handle_failed_worker(self, conn, data, worker):
         logger.info('Worker %s failed attempting to restart' %str(worker))
-        # Reinstantiate worker
-        new_worker = SearchWorkerNode(worker[0], worker[1], (self.host, self.port))
-        new_worker.start()
-        del self.worker_assignments[worker]
-        del self.worker_sys[worker]
-        del self.worker_index[worker]
+        if worker in self.worker_assignments.keys():
+            del self.worker_assignments[worker]
+        if worker in self.worker_sys.keys():
+            del self.worker_sys[worker]
+        if worker  in self.worker_index.keys():
+            del self.worker_index[worker]
+        self.new_worker = True
         # TODO: Reassign tasks that failed
 
 
@@ -250,9 +254,10 @@ class SearchMasterNode(MasterNode):
         # Continously pull tasks from self.work_queue, process, and executed
         logger.info('Waiting for new task queries')
         while True:
-            if self.worker_status == self.ALL_CONNECTED:
+            if len(self.workers) > 0:
                 # check if self.work_queue has tasks ready to process
                 if self.continue_to_next_task and len(self.task_queue) > 0 and self.index_ready:
+                    print('handling tasks')
                     # Wait until we finish the process task first
                     self.continue_to_next_task = False
                     self.process_task()
@@ -421,12 +426,15 @@ class SearchMasterNode(MasterNode):
                         new_index[letter]= {'file':letter_file}
                         
                         #Compute the number of lines in file
-                        with open(letter_file, 'r') as f:
-                            j = 1
-                            for j, l in enumerate(f):
-                                j +=1
-                            new_index[letter]['size']=j 
-                            print("Index for ", letter, "keywords file size: ", j)
+                        try:
+                            with open(letter_file, 'r') as f:
+                                j = 1
+                                for j, l in enumerate(f):
+                                    j +=1
+                                new_index[letter]['size']=j 
+                                print("Index for ", letter, "keywords file size: ", j)
+                        except:
+                            print("No Keywords containing the letter ", letter)
                 
                 # Update index once processing has been completed
                 self.index_system = new_index

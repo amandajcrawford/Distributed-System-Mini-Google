@@ -62,10 +62,16 @@ class IndexWorkerNode(WorkerNode):
             try:
                 if len(self.map_task_queue) > 0 and self.mapper_free:
                     self.mapper_free = False
-                    task_obj = self.map_task_queue[-1]
-                    print(task_obj)
-                    self.map_task_queue.remove(task_obj)
-                    self.map_task(task_obj)
+        
+                    for i in range(5):
+                        task_obj = self.map_task_queue[-1]
+                        print(task_obj)
+                        self.map_task_queue.remove(task_obj)
+                        self.map_task(task_obj)
+
+                        t = threading.Thread(target=self.map_task, args=task_obj)
+                        t.start()
+                    
                     self.mapper_free = True
             except:
                 break
@@ -113,6 +119,8 @@ class IndexWorkerNode(WorkerNode):
             myMapFile.write(i + "," + str(1) + "\n")
         myMapFile.close()
         fp.close()
+
+        # Send complete status to master ----> Need to add in an id for task to map-1
        
 
     def handle_map_task(self, message):
@@ -156,7 +164,6 @@ class IndexWorkerNode(WorkerNode):
 
 class IndexMasterNode(MasterNode):
     # Job Stages
-    PARTITION = 1
     MAP = 2
     REDUCE = 3
 
@@ -175,12 +182,14 @@ class IndexMasterNode(MasterNode):
 
     def start_master(self):
         # Handles iterating through job stages
-        self.curr_job = self.PARTITION  # Partition or Map or Reduce
+        self.curr_job = self.MAP  # Partition or Map or Reduce
         self.job_status = self.NOT_STARTED
         self.index_status = self.RUNNING
 
-        # Directory where partitions are stored
-        self.storage_dir = '\partions'
+        # Map and Reduce Task Information
+        self.map_tasksmap = [] # array of map_task_id 
+        self.reduce_taskmap = []
+
 
         # logger.info('Starting Indexing Job')
 
@@ -195,16 +204,14 @@ class IndexMasterNode(MasterNode):
         parser = MessageParser()
         parsed = parser.parse(received)
 
+        arrayOfFilesAndSize = self.populateArrayOfFilesAndSize(
+                    self.index_dir)
         # Check to see if we have all the workers connected and ready
         #logger.info("Worker Status %s"%self.worker_status)
         if self.worker_status == self.ALL_CONNECTED:
-            if (self.curr_job == self.PARTITION) & (self.job_status == self.NOT_STARTED):
-                # logger.info('Partitioning Index Files For Worker Nodes')
+            if (self.curr_job == self.MAP) & (self.job_status == self.NOT_STARTED):
+                logger.info('Partitioning Index Files For Worker Nodes Map Tasks')
                 self.job_status = self.IN_PROGRESS
-                arrayOfFilesAndSize = self.populateArrayOfFilesAndSize(
-                    self.index_dir)
-                # is it better to read then distribute the blocks, or distribute while reading?
-                # We should read then distribute
                 self.distributeJobToMappers(arrayOfFilesAndSize)
                 #Master Node now has to call reducers
                 # indexer/map/
@@ -297,7 +304,6 @@ class IndexMasterNode(MasterNode):
 
 
 class IndexCluster:
-
     def __init__(self, master_addr, worker_num, index_dir):
         if not master_addr:
             self.master_addr = ("localhost", 8956)

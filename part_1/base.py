@@ -104,10 +104,10 @@ class ProcessNode(Process):
                 else:
                     data.outb += recv_data
             else:
-                # logger.info('closing connection ' + str(data.addr))
+                logger.info('closing connection ' + str(data.addr))
                 self.selector.unregister(sock)
                 if hasattr(self, 'handle_disconnect') and callable(self.handle_disconnect):
-                    self.handle_disconnect(data, sock)
+                    self.handle_disconnect(sock, data)
                 sock.close()
         if mask & selectors.EVENT_WRITE:
             if data.outb:
@@ -156,40 +156,44 @@ class MasterNode(ProcessNode):
                 worker_host = parsed.host
                 worker_ip = (worker_host, worker_port)
 
-                # if worker node, check if we need to add to self.worker_conns with conn
-                if worker_ip not in self.worker_conns:
-                    # logger.info("Adding worker node %s to master list" %str(worker_port))
-                    self.worker_conns[worker_ip] = conn
-                    #logger.info("Num Workers %s"%self.worker_conns.keys())
 
-                    #check to see if initial workers are connected
-                    if len(self.worker_conns.keys()) == self.num_workers:
-                        # logger.info("All worker nodes are connected")
-                        self.worker_status = self.ALL_CONNECTED
-                    else:
-                        self.worker_status = self.PARTIAL_CONNECTED
+                # logger.info("Adding worker node %s to master list" %str(worker_port))
+                print(self.worker_conns)
+                self.worker_conns[worker_ip] = conn
+                #logger.info("Num Workers %s"%self.worker_conns.keys())
+
+                #check to see if initial workers are connected
+                if len(self.worker_conns.keys()) >= self.num_workers:
+                    # logger.info("All worker nodes are connected")
+                    self.worker_status = self.ALL_CONNECTED
+                else:
+                    self.worker_status = self.PARTIAL_CONNECTED
         return
 
     def handle_disconnect(self, conn, data):
-        # try to find the worker that was disconnected
+        # try to find the worker that was disconnecte
+        failed_workers = []
         for worker, w_conn in self.worker_conns.items():
             # delete worker from list
-            if conn.addr == w_conn:
+            if conn == w_conn:
                 # check if worker is still alive
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
                     res = sock.connect_ex(worker)
                     if res != 0:
                         # worker failed
-                        # remove from worker_conn
-                        del self.worker_conns
-                        [worker]
-                        self.num_workers -= 1
-
-                        #call child method handler
-                        if hasattr(self, 'handle_failed_worker') and callable(self.handle_failed_worker):
-                            self.handle_failed_worker(conn, data, worker)
+                        failed_workers.append(worker)
                     else:
-                        self.worker[worker] = res
+                        self.worker_conns[worker] = res
+
+        for worker in failed_workers:
+                        
+            # remove from worker_conn
+            del self.worker_conns[worker]
+            self.num_workers -= 1
+            #call child method handler
+            if hasattr(self, 'handle_failed_worker') and callable(self.handle_failed_worker):
+                self.handle_failed_worker(conn, data, worker)
+
 
 class WorkerNode(ProcessNode):
     def __init__(self, host, port, master_addr):
@@ -234,7 +238,7 @@ class WorkerNode(ProcessNode):
 
     def handle_disconnect(self, conn, data):
         # master can reconnect again or should I shutdown?
-        pass
+        sys.exit()
 
 
 class MessageParser:
@@ -334,7 +338,7 @@ class MessageParser:
             self.parsed.results = eval(repr(self.arr[5]))
         elif command == 'assign':
             self.parsed.action = 'assign'
-            self.parsed.index_dir = self.arr[5]
+            self.parsed.index_dir = self.aux[5]
             self.parsed.assignment = self.arr[6].strip().split(",")
         else:
             self.parsed.action = command

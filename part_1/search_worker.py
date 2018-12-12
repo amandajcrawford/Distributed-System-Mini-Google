@@ -52,7 +52,7 @@ def set_master_host(parser, args):
         host = args.m_host
         try:
             socket.gethostbyname(host)
-            HOST = host
+            M_HOST = host
         except:
             parser.error("Invalid host, please enter a valid host")
 

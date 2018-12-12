@@ -1,0 +1,14 @@
+#
+#
+# /usr/local/share/etc/bashrc sources this file.
+# Add additions and modifications to your environment to this file.
+#
+#
+set env HADOOP_HOME=/usr/share/hadoop
+set env HADOOP_VERSION=1.0.1
+#
+# You may choose to set this to "ps" if you are on the 5th floor or
+# to "ps2" if you are on the 6th floor
+#
+
+#export PRINTER=xxx
