@@ -72,17 +72,17 @@ class IndexWorkerNode(WorkerNode):
                 if len(self.map_task_queue) > 0 and self.mapper_free:    
                     #self.mapper_free = False
                     task_obj = self.map_task_queue[-1]
+                    self.map_task_queue.remove(task_obj)
                     print(task_obj)
                     self.map_task(task_obj)
-                    self.map_task_queue.remove(task_obj)
                     #self.mapper_free = True
                 
                 if len(self.reduce_task_queue) > 0 and self.reduce_free:    
                     #self.mapper_free = False
                     task_obj = self.reduce_task_queue[-1]
+                    self.reducetask_queue.remove(task_obj)
                     print(task_obj)
                     self.reduce_task(task_obj)
-                    self.reducetask_queue.remove(task_obj)
                     #self.mapper_free = True
 
             except Exception as e:

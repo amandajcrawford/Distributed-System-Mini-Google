@@ -78,43 +78,37 @@ class SearchClient:
         self.connection.close()
 
 
-random.seed(11)
+
 def main():
     arguments = get_parser().parse_args()
-    file_name = arguments.file_name
+    kw = list(arguments.kw)
+    print(kw)
     m_port = int(arguments.m_port)
     m_host = arguments.m_host 
     search_addr = (m_host, m_port)
-    num_client = arguments.num_clients
-    clients = list()
-    client_threads = list()
-    p_assign = 0
-    cid = 1
 
-    for w in range(num_client):
-        p_assign = p_assign + 1
-        schedule = random.randint(20, 60)
-        searcher = SearchClient(cid, search_addr, file_name, num_client,schedule)
-        clients.append(searcher)
-        cid = cid + 1
-
-    random.shuffle(clients)
-    for c in clients:
-        try:
-            c_thread = threading.Thread(target=c.request)
-            client_threads.append(c_thread)
-            c_thread.start()
-            sleep(5)
-        except Exception as e:
-            print(str(e))
-
-
+    # Query Search Worker
+    conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    conn.connect_ex(search_addr)
+    kws = ','.join(kw)
+    builder = MessageBuilder()
+    builder.add_keyword_search_message(1,'', 0, kws)
+    msg = builder.build()
+    conn.send(msg.outb)
+    data = conn.recv(1024)
+    if data:
+        data = data.decode("utf-8")
+        parser = MessageParser()
+        parsed = parser.parse(data)
+        results = parsed.results
+        # for kw, info in results.items():
+        #     print(kw, info)
+        print(results)
 def get_parser():
     parser = argparse.ArgumentParser(description='Search Tester Clients')
-    parser.add_argument('file_name', type=str)
     parser.add_argument('m_host', type=str)
     parser.add_argument('m_port', type=int)
-    parser.add_argument('num_clients', type=int)
+    parser.add_argument('--key_words' , dest="kw", nargs='+', required=True)
     return parser
 
 
