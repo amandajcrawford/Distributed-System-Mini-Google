@@ -10,6 +10,7 @@ import math
 import pdb
 import time
 import threading 
+import string
 from multiprocessing import Process, JoinableQueue, current_process, Lock
 from multiprocessing.dummy import Pool as ThreadPool 
 from base import MasterNode, WorkerNode, MessageBuilder, MessageParser, create_logger
@@ -70,20 +71,20 @@ class IndexWorkerNode(WorkerNode):
         while True:
             try:
                 if len(self.map_task_queue) > 0 and self.mapper_free:    
-                    #self.mapper_free = False
+                    self.mapper_free = False
                     task_obj = self.map_task_queue[-1]
                     print(task_obj)
                     self.map_task(task_obj)
                     self.map_task_queue.remove(task_obj)
-                    #self.mapper_free = True
+                    self.mapper_free = True
                 
                 if len(self.reduce_task_queue) > 0 and self.reduce_free:    
-                    #self.mapper_free = False
+                    self.mapper_free = False
                     task_obj = self.reduce_task_queue[-1]
                     print(task_obj)
                     self.reduce_task(task_obj)
-                    self.reducetask_queue.remove(task_obj)
-                    #self.mapper_free = True
+                    self.reduce_task_queue.remove(task_obj)
+                    self.mapper_free = True
 
             except Exception as e:
                 print(e)
@@ -158,7 +159,6 @@ class IndexWorkerNode(WorkerNode):
         self.master_conn.send(message.outb)
         builder.clear()
 
-
     def handle_map_task(self, message):
         directory = message.map_dir
         start = message.map_range_start
@@ -185,10 +185,104 @@ class IndexWorkerNode(WorkerNode):
             'end': end,
             'task_id': t_id
         }
-        self.reduce_task(task_obj)
+        self.reduce_task_queue.append(task_obj)
     
     def reduce_task(self,task_obj):
-        self.task_queue.append(task_obj)
+        rootPath = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__name__)), 'indexer/map/'))
+        listDir = os.listdir(rootPath)
+        arrayOfWords = []
+        start = int(task_obj.get("start"))
+        end = int(task_obj.get("end"))
+        for directory in listDir:
+            files = os.path.abspath(os.path.join(rootPath,directory))
+            for mapperFile in os.listdir(files):
+                split = mapperFile.split("&")[-1:][0]
+                letter = split.split(".")[0]
+                if letter in string.ascii_letters[start:end]:
+                    fp = open(os.path.abspath(os.path.join(files,mapperFile)),'r')
+                    count = 0
+                    word = ''
+                    lastWord = ''
+                    arrayOfWords = []
+                    for i in fp:
+                        word = i.split(",")[0]
+                        if not any(d.get(word) for d in arrayOfWords):
+                            arrayOfWords.append({word:1})
+                        else:
+                            #Because we always append at the end of the list. Just increment the last position
+                            arrayOfWords[-1][word]+=1
+                    index = 0
+                    fp.close()
+                    while index < len(arrayOfWords):
+                        word = list(arrayOfWords[index].keys())[0]
+                        if not os.path.exists(os.path.abspath(os.path.join(os.path.join(os.path.dirname(os.path.abspath(__name__)), 'indexer'),'reducers/'+letter+'.txt'))):
+                            f = open(os.path.abspath(os.path.join(os.path.join(os.path.dirname(os.path.abspath(__name__)), 'indexer'),'reducers/'+letter+'.txt')),"w+")
+                            f.close()
+                        fileToWrite = os.path.abspath(os.path.join(os.path.join(os.path.dirname(os.path.abspath(__name__)), 'indexer'),'reducers/'+letter+'.txt'))
+                        #File is empty, write all words starting with letter w[0]
+                        if os.stat(fileToWrite).st_size == 0:
+                            f = open(fileToWrite,"a+")
+                            lastWord = word
+                            while lastWord[0] == word[0] and index < len(arrayOfWords):
+                                count = list(arrayOfWords[index].values())[0]
+                                lastWord = word
+                                f.write(lastWord + " " + mapperFile.split("&")[0] + ":" + str(count) + '\n')
+                                index+=1
+                                if index >= len(arrayOfWords):
+                                    break
+                                word = list(arrayOfWords[index].keys())[0]
+                            f.close()
+                        #File is not empty. We should load the file and update older words or add new ones
+                        else:
+                            lastWord = word 
+                            f = open(fileToWrite,"r")
+                            #Read all document starting with the same letter as word[0]            
+                            dictOfFileWords = {"words":{}}
+                            for data in f:
+                                v = data.strip().split(" ")
+                                # pdb.set_trace()
+                                filesAndCount = v[1].split(",")
+                                tempArray = []
+                                for j in filesAndCount:
+                                    fc = j.split(":")
+                                    tempArray.append(fc[0])
+                                    tempArray.append(fc[1])
+                                dictOfFileWords["words"].update({v[0]:tempArray})
+                            while lastWord[0] == word[0] and index < len(arrayOfWords):
+                                #word exists in existed file?
+                                if dictOfFileWords["words"].get(word):
+                                    if mapperFile.split("&")[0] in dictOfFileWords["words"].get(word):
+                                        indexInArray = dictOfFileWords["words"].get(word).index(mapperFile.split("&")[0])
+                                        dictOfFileWords["words"][word][indexInArray+1] = int(dictOfFileWords["words"][word][indexInArray+1]) + int(list(arrayOfWords[index].values())[0])
+                                    else:
+                                        #Yes, add to the array list the name of the file that are being read and the count
+                                        y = dictOfFileWords["words"].get(word)
+                                        #Append the name of the file
+                                        y.append(mapperFile.split("&")[0])
+                                        #Append the count of the word
+                                        y.append(list(arrayOfWords[index].values())[0])
+                                        dictOfFileWords["words"].update({word:y})
+                                else:
+                                    dictOfFileWords["words"].update({word:[mapperFile.split("&")[0],list(arrayOfWords[index].values())[0]]})
+                                index+=1
+                                if index >= len(arrayOfWords):
+                                    break
+                                lastWord = word
+                                word = list(arrayOfWords[index].keys())[0]
+                            f.close()
+                            f = open(fileToWrite,"w")
+                            for item,array in dictOfFileWords["words"].items():
+                                filesAndCount = ''
+                                i = 0
+                                while i < len(array):
+                                    filesAndCount+=array[i] + ":" + str(array[i+1]) + ","
+                                    i+=2
+                                filesAndCount = filesAndCount[:-1] + '\n'
+                                #word + ' ' + arrays
+                                line = item + ' ' + filesAndCount
+                                f.write(line)
+                
+            
 
 
 class IndexMasterNode(MasterNode):
@@ -223,12 +317,10 @@ class IndexMasterNode(MasterNode):
         self.map_taskmap = [] # array of map_task_id 
         self.reduce_taskmap = []
 
-
     def start_master(self):
         # Starting Master and Background processes
         master_bg = threading.Thread(target=self.master_bg)
         master_bg.start()
-
 
     def master_bg(self):
         while True:
@@ -239,13 +331,15 @@ class IndexMasterNode(MasterNode):
                 self.curr_job = self.MAP
                 # Check to see if we have all the workers connected and ready
             
-            
             if self.worker_status == self.ALL_CONNECTED:
                 
                 if (self.curr_job == self.MAP) and (self.job_status == self.NOT_STARTED) and self.index_files is not None:
                     logger.info('Starting MAP++++++++ Index Files For Worker Nodes Map Tasks')
-                    self.job_status = self.IN_PROGRESS
-                    self.distributeJobToMappers(self.index_files)
+                    # self.job_status = self.IN_PROGRESS
+                    # self.distributeJobToMappers(self.index_files)
+                    self.curr_job = self.REDUCE
+                    self.job_status = self.NOT_STARTED
+                        
                 
                 if self.curr_job == self.REDUCE and self.job_status == self.NOT_STARTED:
                     logger.info('Starting REDUCE++++++++ Index Files For Worker Nodes Reduce Tasks')
@@ -344,7 +438,6 @@ class IndexMasterNode(MasterNode):
             worker_conn.send(message.outb)
             self.map_taskmap.append(task_id)
 
-
     def distributeJobToReducers(self,path):
         files = os.listdir(path)
         builder = MessageBuilder(messages=[])
@@ -352,37 +445,37 @@ class IndexMasterNode(MasterNode):
         worker_keys = list(self.worker_conns.keys())
         dire = os.path.join(os.path.dirname(os.path.abspath(__name__)), 'indexer/map/')
         count = 0
-        for directory in files:
-            count += 1
-            filesDirectory = os.listdir(os.path.join(path,directory))
-            for iFile in filesDirectory:
-                y = 0
-                worker, letters = 0, 26
-                pathToSend = os.path.join(dire,directory + '/' + iFile)
-                while (letters - letterPerWorker) > 0:
-                    k = y
-                    y += letterPerWorker
-                    task_id = 'reduce-'+str(count)+str(y)
-                    builder.add_task_reduce_message(self.host, self.port, pathToSend, k, y)
-                    message = builder.build()
-                    builder.clear()
-                    #print("sending to worker", worker)
-                    #print(message.outb)
-                    worker_conn = self.worker_conns[worker_keys[worker]]
-                    worker_conn.send(message.outb)
-                    letters -= letterPerWorker
-                    worker += 1
-                    self.reduce_taskmap.append(task_id)
-                task_id = 'reduce-'+str(count)+str(y+1)
-                builder.add_task_reduce_message(self.host, self.port, task_id, pathToSend, y, 26)
-                message = builder.build()
-                builder.clear()
-                worker_conn = self.worker_conns[worker_keys[worker]]
-                worker_conn.send(message.outb)
-                self.reduce_taskmap.append(task_id)
-
-
+        # for directory in files:
         
+            # filesDirectory = os.listdir(os.path.join(path,directory))
+            # for iFile in filesDirectory:
+        y = 0
+        worker, letters = 0, 26
+        # pathToSend = os.path.join(dire,directory + '/' + iFile)
+        pathToSend = 'empty'
+        while (letters - letterPerWorker) > 0:
+            count += 1
+            k = y
+            y += letterPerWorker
+            task_id = 'reduce-'+str(count)+str(y)
+            builder.add_task_reduce_message(self.host, self.port, task_id, pathToSend, k, y)
+            message = builder.build()
+            builder.clear()
+            #print("sending to worker", worker)
+            #print(message.outb)
+            worker_conn = self.worker_conns[worker_keys[worker]]
+            worker_conn.send(message.outb)
+            letters -= letterPerWorker
+            worker += 1
+            self.reduce_taskmap.append(task_id)
+        task_id = 'reduce-'+str(count)+str(y+1)
+        builder.add_task_reduce_message(self.host, self.port, task_id, pathToSend, y, 26)
+        message = builder.build()
+        builder.clear()
+        worker_conn = self.worker_conns[worker_keys[worker]]
+        worker_conn.send(message.outb)
+        self.reduce_taskmap.append(task_id)
+
 class IndexCluster:
     def __init__(self, master_addr, worker_num, index_dir):
         if not master_addr:
