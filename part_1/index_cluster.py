@@ -281,9 +281,6 @@ class IndexWorkerNode(WorkerNode):
                                 #word + ' ' + arrays
                                 line = item + ' ' + filesAndCount
                                 f.write(line)
-                
-            
-
 
 class IndexMasterNode(MasterNode):
     # Job Stages
@@ -336,7 +333,7 @@ class IndexMasterNode(MasterNode):
                 if (self.curr_job == self.MAP) and (self.job_status == self.NOT_STARTED) and self.index_files is not None:
                     logger.info('Starting MAP++++++++ Index Files For Worker Nodes Map Tasks')
                     self.job_status = self.IN_PROGRESS
-                    self.distributeJobToMappers(self.index_files)
+                    # self.distributeJobToMappers(self.index_files)
                     self.curr_job = self.REDUCE
                     self.job_status = self.NOT_STARTED
                         
@@ -442,6 +439,7 @@ class IndexMasterNode(MasterNode):
     def distributeJobToReducers(self,path):
         files = os.listdir(path)
         builder = MessageBuilder(messages=[])
+        print(self.num_workers)
         letterPerWorker = math.ceil((26/self.num_workers))
         worker_keys = list(self.worker_conns.keys())
         dire = os.path.join(os.path.dirname(os.path.abspath(__name__)), 'indexer/map/')
@@ -455,7 +453,6 @@ class IndexMasterNode(MasterNode):
         # pathToSend = os.path.join(dire,directory + '/' + iFile)
         pathToSend = 'empty'
         while (letters - letterPerWorker) > 0:
-            count += 1
             k = y
             y += letterPerWorker
             task_id = 'reduce-'+str(count)+str(y)
@@ -468,6 +465,7 @@ class IndexMasterNode(MasterNode):
             worker_conn.send(message.outb)
             letters -= letterPerWorker
             worker += 1
+            count += 1
             self.reduce_taskmap.append(task_id)
         task_id = 'reduce-'+str(count)+str(y+1)
         builder.add_task_reduce_message(self.host, self.port, task_id, pathToSend, y, 26)
