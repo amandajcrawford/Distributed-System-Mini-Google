@@ -170,7 +170,7 @@ class SearchMasterNode(MasterNode):
     def handle_failed_worker(self, conn, data, worker):
         logger.info('Worker %s failed attempting to restart' %str(worker))
         if worker in self.worker_assignments.keys():
-            for task in self.worker_assignments[worker]:
+            for task in self.worker_assignments[worker].keys():
                 # Remove the possibility of hanging tasks/ decreases accuracy
                 self.task_map[task]['results'] -= 1
             del self.worker_assignments[worker]
