@@ -335,7 +335,8 @@ class MessageParser:
             self.parsed.keywords = self.arr[6].strip().split(",")
         elif command == 'response':
             self.parsed.action = 'response'
-            self.parsed.results = eval(repr(self.arr[5]))
+            r_str = self.arr[5].replace("'", "\"")
+            self.parsed.results = json.loads(r_str)
         elif command == 'assign':
             self.parsed.action = 'assign'
             self.parsed.index_dir = self.aux[5]
@@ -399,7 +400,7 @@ class MessageBuilder:
             addr = ''.join(self.addr) ,
             connid=self.connid,
             recv_total=self.recv_total,
-            messages=list(message),
+            messages=[message],
             outb= self.outb
         )
         self.clear()
@@ -479,9 +480,9 @@ class MessageBuilder:
 
     def add_client_response_message(self,host, port, result):
         self.addr = (host, str(port))
-        result = str(result)
+        # result = str(result)
         # used for master to send a task message to worker node
-        message = bytes("RPC | MASTER | %s | %s | RESPONSE | %s |"%(host, str(port), result ), 'utf-8')
+        message = bytes("RPC | MASTER | %s | %s | RESPONSE | %r |"%(host, str(port), result ), 'utf-8')
         self.messages.append(message)
         self.connid += 1
 
