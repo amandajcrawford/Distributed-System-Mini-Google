@@ -82,7 +82,6 @@ class IndexWorkerNode(WorkerNode):
                 if len(self.reduce_task_queue) > 0 and self.reduce_free:    
                     self.mapper_free = False
                     task_obj = self.reduce_task_queue[-1]
-                    self.reducetask_queue.remove(task_obj)
                     self.reduce_task(task_obj)
                     self.reduce_task_queue.remove(task_obj)
                     self.mapper_free = True
