@@ -73,6 +73,7 @@ class IndexWorkerNode(WorkerNode):
                 if len(self.map_task_queue) > 0 and self.mapper_free:    
                     self.mapper_free = False
                     task_obj = self.map_task_queue[-1]
+                    self.map_task_queue.remove(task_obj)
                     print(task_obj)
                     self.map_task(task_obj)
                     self.map_task_queue.remove(task_obj)
@@ -81,7 +82,7 @@ class IndexWorkerNode(WorkerNode):
                 if len(self.reduce_task_queue) > 0 and self.reduce_free:    
                     self.mapper_free = False
                     task_obj = self.reduce_task_queue[-1]
-                    print(task_obj)
+                    self.reducetask_queue.remove(task_obj)
                     self.reduce_task(task_obj)
                     self.reduce_task_queue.remove(task_obj)
                     self.mapper_free = True
@@ -335,8 +336,8 @@ class IndexMasterNode(MasterNode):
                 
                 if (self.curr_job == self.MAP) and (self.job_status == self.NOT_STARTED) and self.index_files is not None:
                     logger.info('Starting MAP++++++++ Index Files For Worker Nodes Map Tasks')
-                    # self.job_status = self.IN_PROGRESS
-                    # self.distributeJobToMappers(self.index_files)
+                    self.job_status = self.IN_PROGRESS
+                    self.distributeJobToMappers(self.index_files)
                     self.curr_job = self.REDUCE
                     self.job_status = self.NOT_STARTED
                         
@@ -345,6 +346,7 @@ class IndexMasterNode(MasterNode):
                     logger.info('Starting REDUCE++++++++ Index Files For Worker Nodes Reduce Tasks')
                     self.job_status = self.IN_PROGRESS
                     self.distributeJobToReducers(os.path.join(os.path.dirname(__file__),'indexer/map'))
+                    self.job_status = self.COMPLETED
                 
                 if self.curr_job == self.REDUCE and self.job_status == self.NOT_STARTED:
                     logger.info('Updating pointing index directory')

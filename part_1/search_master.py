@@ -15,7 +15,7 @@ from pathlib import Path
 INDEX_DIR = path.abspath(path.join(Path(path.dirname(__file__)), 'reducers'))
 NUM_NODES = 1
 HOST = ''
-PORT = 9877
+PORT = 9878
 
 def set_index_dir(parser, args):
     ''' Check if index directory is valid'''
