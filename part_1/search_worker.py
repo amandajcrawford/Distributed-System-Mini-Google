@@ -16,7 +16,7 @@ from pathlib import Path
 
 HOST = ''
 M_HOST = 'localhost'
-M_PORT = 9877
+M_PORT = 9878
 PORT = None
 
 def set_port(parser, args):

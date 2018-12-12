@@ -73,6 +73,7 @@ class IndexWorkerNode(WorkerNode):
                 if len(self.map_task_queue) > 0 and self.mapper_free:    
                     self.mapper_free = False
                     task_obj = self.map_task_queue[-1]
+                    self.map_task_queue.remove(task_obj)
                     print(task_obj)
                     self.map_task(task_obj)
                     self.map_task_queue.remove(task_obj)
@@ -81,7 +82,6 @@ class IndexWorkerNode(WorkerNode):
                 if len(self.reduce_task_queue) > 0 and self.reduce_free:    
                     self.mapper_free = False
                     task_obj = self.reduce_task_queue[-1]
-                    print(task_obj)
                     self.reduce_task(task_obj)
                     self.reduce_task_queue.remove(task_obj)
                     self.mapper_free = True
@@ -281,9 +281,11 @@ class IndexWorkerNode(WorkerNode):
                                 #word + ' ' + arrays
                                 line = item + ' ' + filesAndCount
                                 f.write(line)
-                
-            
-
+        builder = MessageBuilder(messages=[])
+        builder.add_reduce_complete_message(self.host, self.port, task_obj.get("task_id"))
+        message = builder.build()
+        self.master_conn.send(message.outb)
+        builder.clear()
 
 class IndexMasterNode(MasterNode):
     # Job Stages
@@ -335,7 +337,7 @@ class IndexMasterNode(MasterNode):
                 
                 if (self.curr_job == self.MAP) and (self.job_status == self.NOT_STARTED) and self.index_files is not None:
                     logger.info('Starting MAP++++++++ Index Files For Worker Nodes Map Tasks')
-                    # self.job_status = self.IN_PROGRESS
+                    self.job_status = self.IN_PROGRESS
                     # self.distributeJobToMappers(self.index_files)
                     self.curr_job = self.REDUCE
                     self.job_status = self.NOT_STARTED
@@ -345,6 +347,7 @@ class IndexMasterNode(MasterNode):
                     logger.info('Starting REDUCE++++++++ Index Files For Worker Nodes Reduce Tasks')
                     self.job_status = self.IN_PROGRESS
                     self.distributeJobToReducers(os.path.join(os.path.dirname(__file__),'indexer/map'))
+                    self.job_status = self.COMPLETED
                 
                 if self.curr_job == self.REDUCE and self.job_status == self.NOT_STARTED:
                     logger.info('Updating pointing index directory')
@@ -441,6 +444,7 @@ class IndexMasterNode(MasterNode):
     def distributeJobToReducers(self,path):
         files = os.listdir(path)
         builder = MessageBuilder(messages=[])
+        print(self.num_workers)
         letterPerWorker = math.ceil((26/self.num_workers))
         worker_keys = list(self.worker_conns.keys())
         dire = os.path.join(os.path.dirname(os.path.abspath(__name__)), 'indexer/map/')
@@ -454,7 +458,6 @@ class IndexMasterNode(MasterNode):
         # pathToSend = os.path.join(dire,directory + '/' + iFile)
         pathToSend = 'empty'
         while (letters - letterPerWorker) > 0:
-            count += 1
             k = y
             y += letterPerWorker
             task_id = 'reduce-'+str(count)+str(y)
@@ -467,6 +470,7 @@ class IndexMasterNode(MasterNode):
             worker_conn.send(message.outb)
             letters -= letterPerWorker
             worker += 1
+            count += 1
             self.reduce_taskmap.append(task_id)
         task_id = 'reduce-'+str(count)+str(y+1)
         builder.add_task_reduce_message(self.host, self.port, task_id, pathToSend, y, 26)

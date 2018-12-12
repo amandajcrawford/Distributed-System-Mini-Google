@@ -56,6 +56,7 @@ class ProcessNode(Process):
         try:
             self.selector = selectors.DefaultSelector()
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             self.sock.bind((self.host, self.port))
             self.sock.listen(100)
         except Exception as e:
@@ -63,7 +64,6 @@ class ProcessNode(Process):
         finally:
             logger.info('listening on %s %s'%(self.host, self.port))
             self.sock.setblocking(False)
-            self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             self.selector.register(self.sock, selectors.EVENT_READ, data=self.data)
             # atexit.register(self.shutdown)
             self.host = socket.gethostname()
@@ -439,6 +439,13 @@ class MessageBuilder:
         self.addr = (host, str(port))
         # used for worker nodes to send task complete status
         message = bytes("RPC | WORKER | %s | %s | MAP | COMPLETE | %s |"%(host, str(port), str(taskid)), 'utf-8')
+        self.messages.append(message)
+        self.connid += 1
+
+    def add_reduce_complete_message(self, host, port, taskid):
+        self.addr = (host, str(port))
+        # used for worker nodes to send task complete status
+        message = bytes("RPC | WORKER | %s | %s | REDUCE | COMPLETE | %s |"%(host, str(port), str(taskid)), 'utf-8')
         self.messages.append(message)
         self.connid += 1
 
