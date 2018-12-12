@@ -170,13 +170,15 @@ class SearchMasterNode(MasterNode):
     def handle_failed_worker(self, conn, data, worker):
         logger.info('Worker %s failed attempting to restart' %str(worker))
         if worker in self.worker_assignments.keys():
+            for task in self.worker_assignments[worker].keys():
+                # Remove the possibility of hanging tasks/ decreases accuracy
+                self.task_map[task]['results'] -= 1
             del self.worker_assignments[worker]
         if worker in self.worker_sys.keys():
             del self.worker_sys[worker]
         if worker  in self.worker_index.keys():
             del self.worker_index[worker]
         self.new_worker = True
-        # TODO: Reassign tasks that failed
 
 
     def handle_request(self, conn, addr, received):
@@ -254,7 +256,7 @@ class SearchMasterNode(MasterNode):
         # Continously pull tasks from self.work_queue, process, and executed
         logger.info('Waiting for new task queries')
         while True:
-            if len(self.worker_conns) > 0:
+            if len(self.worker_conns.keys()) > 0:
                 # check if self.work_queue has tasks ready to process
                 if self.continue_to_next_task and len(self.task_queue) > 0 and self.index_ready:
                     print('handling tasks')
@@ -384,7 +386,10 @@ class SearchMasterNode(MasterNode):
         message = builder.build()
 
         logger.info('Task %s Complete ======>> Sending Client Rank Documents for the keywords: %s Rank: %r '%(str(task_id),str(data['keywords']),final_output))
-        conn.send(message.outb)
+        try:
+            conn.send(message.outb)
+        except:
+            logger.info('*********Client Failed to receive Data ***')
 
 
     def handle_index_updates(self):
