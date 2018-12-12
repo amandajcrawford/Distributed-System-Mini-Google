@@ -57,7 +57,7 @@ class ProcessNode(Process):
             self.selector = selectors.DefaultSelector()
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.sock.bind((self.host, self.port))
-            self.sock.listen()
+            self.sock.listen(100)
         except Exception as e:
             raise ConnectionError('Failed to connect to master node')
         finally:
@@ -319,14 +319,16 @@ class MessageParser:
 
         if command == 'map':
             self.parsed.action = 'map'
-            self.parsed.map_dir = self.aux[5]
-            rangeLines = self.arr[6].split("-")
+            self.parsed.taskid = self.arr[5]
+            self.parsed.map_dir = self.aux[6]
+            rangeLines = self.arr[7].split("-")
             self.parsed.map_range_start = rangeLines[0]
             self.parsed.map_range_end = rangeLines[1]
         elif command == 'reduce':
             self.parsed.action = 'reduce'
-            self.parsed.red_dir = self.aux[5]
-            rangeLines = self.arr[6].split("-")
+            self.parsed.taskid = self.arr[5]
+            self.parsed.red_dir = self.aux[6]
+            rangeLines = self.arr[7].split("-")
             self.parsed.red_start_letter = rangeLines[0]
             self.parsed.red_end_letter = rangeLines[1]
         elif command == 'search':
@@ -357,8 +359,10 @@ class MessageParser:
             self.parsed.taskid = self.arr[6]
             r_str = self.arr[7].replace("'", "\"")
             self.parsed.results = json.loads(r_str)
-        elif command == 'sys':
-            self.parsed.action = 'sys'
+        elif command == 'map':
+            self.parsed.action = 'map'
+            self.parsed.status = self.arr[5]
+            self.parsed.taskid = self.arr[6]
         else:
             self.parsed.action = command
             self.parsed.unparsed = self.arr
@@ -431,6 +435,13 @@ class MessageBuilder:
         self.connid += 1
 
     ''' INDEX WORKER NODE MESSAGES '''
+    def add_map_complete_message(self, host, port, taskid):
+        self.addr = (host, str(port))
+        # used for worker nodes to send task complete status
+        message = bytes("RPC | WORKER | %s | %s | MAP | COMPLETE | %s |"%(host, str(port), str(taskid)), 'utf-8')
+        self.messages.append(message)
+        self.connid += 1
+
 
 
     ''' SEARCH WORKER NODE MESSAGES '''
@@ -445,19 +456,19 @@ class MessageBuilder:
     ''' ------- MASTER NODE MESSAGES ---------- '''
 
     ''' INDEX MASTER NODE MESSAGES '''
-    def add_task_map_message(self,host, port, path, range_start="", range_end=""):
+    def add_task_map_message(self,host, port, task_id, path, range_start="", range_end=""):
         self.addr = (host, str(port))
         range = "%s-%s"%(str(range_start), str(range_end))
         # used for master to send a task message to worker node
-        message = bytes("RPC | MASTER | %s| %s | MAP | %s | %s |"%(host, str(port), path, str(range)) , 'utf-8')
+        message = bytes("RPC | MASTER | %s| %s | MAP | %s | %s | %s |"%(host, str(port), task_id, path, str(range)) , 'utf-8')
         self.messages.append(message)
         self.connid += 1
 
-    def add_task_reduce_message(self,host, port, path, range_start="", range_end=""):
+    def add_task_reduce_message(self,host, port, task_id, path, range_start="", range_end=""):
         self.addr = (host, str(port))
         range = "%s-%s"%(str(range_start), str(range_end))
         # used for master to send a task message to worker node
-        message = bytes("RPC | MASTER | %s | %s | REDUCE | %s | %s |"%(host, str(port), path, str(range)) , 'utf-8')
+        message = bytes("RPC | MASTER | %s | %s | REDUCE | %s | %s | %s |"%(host, str(port), task_id, path, str(range)) , 'utf-8')
         self.messages.append(message)
         self.connid += 1
 
