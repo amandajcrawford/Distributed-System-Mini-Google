@@ -116,7 +116,8 @@ class IndexWorkerNode(WorkerNode):
         input_mapper_file = os.path.join(input_file_dir, map_file_name)
         finalArray = []
         try:
-            fp = open(task_obj.get("dir"), 'r', encoding="ISO-8859-1")
+            fp = open(task_obj.get("dir"), 'r',
+                      encoding="ISO-8859-1")
         except:
             fp = open(task_obj.get("dir"), 'r', encoding="utf-8")
 
@@ -125,35 +126,53 @@ class IndexWorkerNode(WorkerNode):
         try:
             partitions = {}
             for i, line in enumerate(fp):
-                if i >= begin and i <= end:
+                if i >= begin and i < end:
                     # Remove special characters characters from the line: , . : ; ... and numbers
                     # add 0-9 to re to keep numbers
                     # Make all words to lower case
                     line = re.sub('[^A-Za-z0-9]+', ' ', line).lower()
                     # Tokenize the words into vector of words
                     word_tokens = word_tokenize(line)
+                    if len(word_tokens) > 0:
+                        for word in word_tokens:
+                            if word not in stop_words:
+                                first_letter = word[0]
+                                if first_letter in partitions.keys():
+                                    partitions[first_letter].append(word)
+                                else:
+                                    partitions[first_letter] = []
 
                     # Remove non-stop words
-                    [finalArray.append(word)
-                     for word in word_tokens if word not in stop_words]
+                    # finalArray.append(word_tokens)
+                    # [finalArray.append(word)
+                    #  for word in word_tokens if word not in stop_words]
 
-            if len(finalArray) > 0:
-                finalArray.sort()
-                opened = False
-                lastLetter = ''
-                for i in finalArray:
-                    # I read a but now is C, I need to reopen another file to
-                    # write
-                    if not lastLetter == i[0]:
-                        opened = False
-                    if not opened:
-                        f = open(os.path.abspath(
-                            input_mapper_file + '&' + i[0] + '.txt'), 'a')
-                        opened = True
-                        lastLetter = i[0]
-                    f.write(i + "," + str(1) + "\n")
-                # f.close()
-                fp.close()
+            for letter, words in partitions.items():
+                f = None
+                if os.path.exists(os.path.abspath(input_mapper_file + '&' + letter + '.txt')):
+                    f = open(os.path.abspath(
+                        input_mapper_file + '&' + letter + '.txt'), 'a+')
+                    words.sort()
+                    [f.write("%s,1\n" % w) for w in words]
+                    f.close()
+                else:
+                    f = open(os.path.abspath(
+                        input_mapper_file + '&' + letter + '.txt'), 'w+')
+                    words.sort()
+                    [f.write("%s,1\n" % w) for w in words]
+                    f.close()
+
+            # finalArray.sort()
+            # for i in finalArray:
+            #     if os.path.exists(os.path.abspath(input_mapper_file + '&' + i[0] + '.txt')):
+            #         f = open(os.path.abspath(
+            #             input_mapper_file + '&' + i[0] + '.txt'), 'a+')
+            #     else:
+            #         f = open(os.path.abspath(
+            #             input_mapper_file + '&' + i[0] + '.txt'), 'w+')
+            #     f.write(i + "," + str(1) + "\n")
+            # f.close()
+            # fp.close()
         except Exception as e:
             print(e)
         logger.info('Finished Map Task number: %s for %s file' %

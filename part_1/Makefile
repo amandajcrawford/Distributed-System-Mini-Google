@@ -6,27 +6,50 @@
 # --- Python 3.6
 # ---- psutils python library
 # -----nltk python library 
-# ----- nltk corpus needed : stopwords, punkt 
-# The following commands can be used to run both a search system and index system:
+# -----nltk corpus needed : stopwords, punkt 
+#
+
+SM_PORT = 13086
+SM_HOST = "localhost"
+HOST = "localhost"
+INODES = 4
+
+install:
+	export LD_LIBRARY_PATH=/usr/local/lib
+	pip3 install psutil --user
+	pip3 install nltk --user
+
+
+# 	### Index System Commands #####
+# 	Run the indexer system 
 # 
-# 
-# 
+
+index: indexer.py
+	python3 indexer.py -nodes $(INODES)
+
 
 # 	### Search System Commands #####
 # 	To run the search system, the master node must be running and listening or the worker nodes will not be able to start.To run the sea
 # 
-search_master:
-	pip install psutils
-	python3 search_maste.py
+search:
+	python3 keyword_search.py $(SM_HOST) $(SM_PORT) --key_words $(KW)
+
+search_master: search_master.py
+	python3 search_master.py -port $(SM_PORT) 
 
 search_worker:
-	python 3 search_worker.py
-
-search_worker_hydrogen:
-	python 3 search_worker.py -m_host hydrogen.cs.pitt.edu
-
-search_worker_hydrogen:
-	python 3 search_worker.py -m_host hydrogen.cs.pitt.edu
+	python3 search_worker.py -m_host $(SM_HOST) -m_port $(SM_PORT) 
 
 search_tester:
-	python search_tester.py keywords_search.txt localhost 9878 2
+	python search_tester.py keywords_search.txt localhost $(SM_PORT) $(clients)
+
+clean:
+	rm -r __*
+	rm -r *.log*
+
+clean_index: 
+	rm -r /indexer
+
+clean_all:
+	rm -r /indexer
+	rm *.log
