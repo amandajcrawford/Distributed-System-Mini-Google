@@ -1,6 +1,6 @@
 # Project 2: Distributed Mini Google System 
 # CS2510 - Distributed Operating Systems
-# Amanda Crawford and Raphael Car
+# Amanda Crawford and Raphael Fernandes
 
 # Project Dependencies
 # --- Python 3.6
@@ -17,16 +17,16 @@
 # 
 search_master:
 	pip install psutils
-	python3 search_master
+	python3 search_maste.py
 
 search_worker:
-	python 3 search_worker
+	python 3 search_worker.py
 
 search_worker_hydrogen:
-	python 3 search_worker -m_host hydrogen.cs.pitt.edu
+	python 3 search_worker.py -m_host hydrogen.cs.pitt.edu
 
 search_worker_hydrogen:
-	python 3 search_worker -m_host hydrogen.cs.pitt.edu
+	python 3 search_worker.py -m_host hydrogen.cs.pitt.edu
 
 search_tester:
-	python search_tester.py keywords_search.txt localhost 9778 2
+	python search_tester.py keywords_search.txt localhost 9878 2

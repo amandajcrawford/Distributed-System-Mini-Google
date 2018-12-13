@@ -12,8 +12,7 @@ from pathlib import Path
     -num_nodes: {optional} number of worker nodes to be instantiated
     -port: {optional} port address for the master server, will also be used for the worker nodes
 '''
-INDEX_DIR = path.abspath(
-    path.join(Path(path.dirname(__file__)), 'indexer/reduce'))
+INDEX_DIR = path.abspath(path.join(Path(path.dirname(__file__)), 'indexer_1/reduce'))
 NUM_NODES = 1
 HOST = ''
 PORT = 9878

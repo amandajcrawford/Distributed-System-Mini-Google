@@ -345,7 +345,9 @@ class SearchMasterNode(MasterNode):
  
         for obj in data['results']:
             for kw,v in obj.items():
-                for d in v:
+                v = v[0]
+                document_l = v.split(',')
+                for d in document_l:
                     doc_arr = d.split(':')
                     doc_name = doc_arr[0]
                     doc_freq = doc_arr[1]
@@ -381,7 +383,7 @@ class SearchMasterNode(MasterNode):
         conn = data['conn']
 
         builder = MessageBuilder()
-        builder.add_search_complete_message(self.host, self.port,task_id, final_output)
+        builder.add_client_response_message(self.host, self.port, final_output)
         message = builder.build()
 
         logger.info('Task %s Complete ======>> Sending Client Rank Documents for the keywords: %s Rank: %r '%(str(task_id),str(data['keywords']),final_output))

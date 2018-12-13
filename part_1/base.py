@@ -6,6 +6,7 @@
     https://realpython.com/python-sockets/
 
 '''
+import ast
 import atexit
 import asyncore
 import logging
@@ -346,7 +347,7 @@ class MessageParser:
         elif command == 'response':
             self.parsed.action = 'response'
             r_str = self.arr[5].replace("'", "\"")
-            self.parsed.results = json.loads(r_str)
+            self.parsed.results = ast.literal_eval(r_str)
         elif command == 'assign':
             self.parsed.action = 'assign'
             self.parsed.index_dir = self.aux[5]
@@ -524,8 +525,7 @@ class MessageBuilder:
         self.addr = (host, str(port))
         # result = str(result)
         # used for master to send a task message to worker node
-        message = bytes("RPC | MASTER | %s | %s | RESPONSE | %r |" %
-                        (host, str(port), result), 'utf-8')
+        message = bytes("RPC | MASTER | %s | %s | RESPONSE | %r |" %(host, str(port), result), 'utf-8')
         self.messages.append(message)
         self.connid += 1
 
