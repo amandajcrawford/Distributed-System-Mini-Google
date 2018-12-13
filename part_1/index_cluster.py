@@ -131,7 +131,7 @@ class IndexWorkerNode(WorkerNode):
                     # Remove special characters characters from the line: , . : ; ... and numbers
                     # add 0-9 to re to keep numbers
                     # Make all words to lower case
-                    line = re.sub('[^A-Za-z]+', ' ', line).lower()
+                    line = re.sub('[^A-Za-z0-9]+', ' ', line).lower()
                     # Tokenize the words into vector of words
                     word_tokens = word_tokenize(line)
                     if len(word_tokens) > 0:
@@ -504,7 +504,6 @@ class IndexMasterNode(MasterNode):
     def distributeJobToReducers(self, path):
         files = os.listdir(path)
         builder = MessageBuilder(messages=[])
-        print(self.num_workers)
         letterPerWorker = math.ceil((26 / self.num_workers))
         worker_keys = list(self.worker_conns.keys())
         # dire = os.path.join(os.path.dirname(

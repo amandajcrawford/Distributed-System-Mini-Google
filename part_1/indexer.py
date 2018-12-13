@@ -16,7 +16,7 @@ import pdb
 INDEX_DIR = path.abspath(
     path.join(path.dirname(path.realpath(__file__)), '../inputs'))
 # path.join(Path(path.dirname(__name__)).parent, 'inputs')
-NUM_NODES = 2
+NUM_NODES = 4
 HOST = 'localhost'
 PORT = 9858
 
