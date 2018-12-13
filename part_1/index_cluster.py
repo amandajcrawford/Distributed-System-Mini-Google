@@ -97,12 +97,10 @@ class IndexWorkerNode(WorkerNode):
         input_file_name = task_obj.get("dir").split("/")[-1:][0]
         begin = int(task_obj.get("start"))
         end = int(task_obj.get("end"))
-        indexer_map_dir_path = os.path.join(os.path.dirname(
-            os.path.abspath(__file__)), os.path.join('indexer', 'map'))
-
+        # indexer_map_dir_path = os.path.join(os.path.dirname(
+        #     os.path.abspath(__file__)), os.path.join('indexer', 'map'))
+        indexer_map_dir_path = self.map_dir
         base_file_arr = os.path.basename(input_file_name).split(".")
-        print(base_file_arr)
-        print(os.path.basename(input_file_name))
         raw_input_file_name = ""
         if len(base_file_arr) > 0:
             raw_input_file_name = base_file_arr[0]
@@ -110,11 +108,8 @@ class IndexWorkerNode(WorkerNode):
             raw_input_file_name = os.path.basename(input_file_name)
 
         if not os.path.exists(os.path.abspath(os.path.join(indexer_map_dir_path, raw_input_file_name))):
-            #lock = Lock()
-            # lock.acquire()
             pathlib.Path(os.path.abspath(os.path.join(
                 indexer_map_dir_path, raw_input_file_name))).mkdir(parents=True, exist_ok=True)
-            # lock.release()
         input_file_dir = os.path.abspath(os.path.join(
             indexer_map_dir_path, raw_input_file_name))
 
@@ -122,14 +117,15 @@ class IndexWorkerNode(WorkerNode):
         input_mapper_file = os.path.join(input_file_dir, map_file_name)
         finalArray = []
         try:
-            fp = open(task_obj.get("dir"), 'r', encoding="ISO-8859-1")
+            fp = open(task_obj.get("dir"), 'r',
+                      encoding="ISO-8859-1")
         except:
             fp = open(task_obj.get("dir"), 'r', encoding="utf-8")
 
-        print(fp)
         logger.info('Starting Map Task %s for %s file' %
                     (task_id, map_file_name))
         try:
+            partitions = {}
             for i, line in enumerate(fp):
                 if i >= begin and i < end:
                     # Remove special characters characters from the line: , . : ; ... and numbers
@@ -138,20 +134,46 @@ class IndexWorkerNode(WorkerNode):
                     line = re.sub('[^A-Za-z]+', ' ', line).lower()
                     # Tokenize the words into vector of words
                     word_tokens = word_tokenize(line)
+                    if len(word_tokens) > 0:
+                        for word in word_tokens:
+                            if word not in stop_words:
+                                first_letter = word[0]
+                                if first_letter in partitions.keys():
+                                    partitions[first_letter].append(word)
+                                else:
+                                    partitions[first_letter] = []
+
                     # Remove non-stop words
-                    [finalArray.append(word)
-                     for word in word_tokens if word not in stop_words]
-            finalArray.sort()
-            for i in finalArray:
-                if os.path.exists(os.path.abspath(input_mapper_file + '&' + i[0] + '.txt')):
+                    # finalArray.append(word_tokens)
+                    # [finalArray.append(word)
+                    #  for word in word_tokens if word not in stop_words]
+
+            for letter, words in partitions.items():
+                f = None
+                if os.path.exists(os.path.abspath(input_mapper_file + '&' + letter + '.txt')):
                     f = open(os.path.abspath(
-                        input_mapper_file + '&' + i[0] + '.txt'), 'a+')
+                        input_mapper_file + '&' + letter + '.txt'), 'a+')
+                    words.sort()
+                    [f.write("%s,1\n" % w) for w in words]
+                    f.close()
                 else:
                     f = open(os.path.abspath(
-                        input_mapper_file + '&' + i[0] + '.txt'), 'w+')
-                f.write(i + "," + str(1) + "\n")
-                f.close()
-            fp.close()
+                        input_mapper_file + '&' + letter + '.txt'), 'w+')
+                    words.sort()
+                    [f.write("%s,1\n" % w) for w in words]
+                    f.close()
+
+            # finalArray.sort()
+            # for i in finalArray:
+            #     if os.path.exists(os.path.abspath(input_mapper_file + '&' + i[0] + '.txt')):
+            #         f = open(os.path.abspath(
+            #             input_mapper_file + '&' + i[0] + '.txt'), 'a+')
+            #     else:
+            #         f = open(os.path.abspath(
+            #             input_mapper_file + '&' + i[0] + '.txt'), 'w+')
+            #     f.write(i + "," + str(1) + "\n")
+            # f.close()
+            # fp.close()
         except Exception as e:
             print(e)
         logger.info('Finished Map Task number: %s for %s file' %
@@ -195,8 +217,9 @@ class IndexWorkerNode(WorkerNode):
         self.reduce_task_queue.append(task_obj)
 
     def reduce_task(self, task_obj):
-        rootPath = os.path.abspath(os.path.join(
-            os.path.dirname(os.path.abspath(__name__)), 'indexer/map/'))
+        # rootPath = os.path.abspath(os.path.join(
+        #     os.path.dirname(os.path.abspath(__name__)), 'indexer/map/'))
+        rootPath = self.map_dir
         listDir = os.listdir(rootPath)
         arrayOfWords = []
         start = int(task_obj.get("start"))
@@ -227,15 +250,16 @@ class IndexWorkerNode(WorkerNode):
                     index = 0
                     fp.close()
                     while index < len(arrayOfWords):
-                        # print(index)
                         word = list(arrayOfWords[index].keys())[0]
-                        # print(os.path.join(os.path.join(os.path.dirname(os.path.abspath(__name__)), 'indexer')))
-                        if not os.path.exists(os.path.abspath(os.path.join(os.path.join(os.path.dirname(os.path.abspath(__name__)), 'indexer'), 'reducers/' + letter + '.txt'))):
-                            f = open(os.path.abspath(os.path.join(os.path.join(os.path.dirname(
-                                os.path.abspath(__name__)), 'indexer'), 'reducers/' + letter + '.txt')), "w+")
+                        if not os.path.exists(os.path.abspath(os.path.join(os.path.join(self.red_dir, letter + '.txt')))):
+                            f = open(os.path.abspath(os.path.join(
+                                self.red_dir, letter + '.txt')), "w+")
                             f.close()
-                        fileToWrite = os.path.abspath(os.path.join(os.path.join(os.path.dirname(
-                            os.path.abspath(__name__)), 'indexer'), 'reducers/' + letter + '.txt'))
+                        # fileToWrite = os.path.abspath(os.path.join(os.path.join(os.path.dirname(
+                        # os.path.abspath(__name__)), 'indexer'), 'reducers/' +
+                        # letter + '.txt'))
+                        fileToWrite = os.path.abspath(os.path.join(
+                            self.red_dir, letter + '.txt'))
                         # File is empty, write all words starting with letter
                         # w[0]
                         if os.stat(fileToWrite).st_size == 0:
@@ -251,55 +275,66 @@ class IndexWorkerNode(WorkerNode):
                                     break
                                 word = list(arrayOfWords[index].keys())[0]
                             f.close()
-                        # File is not empty. We should load the file and update older words or add new ones
-                        # else:
-                        #     lastWord = word
-                        #     f = open(fileToWrite,"r")
-                        #     #Read all document starting with the same letter as word[0]
-                        #     dictOfFileWords = {"words":{}}
-                        #     for data in f:
-                        #         v = data.strip().split(" ")
-                        #         # pdb.set_trace()
-                        #         filesAndCount = v[1].split(",")
-                        #         tempArray = []
-                        #         for j in filesAndCount:
-                        #             fc = j.split(":")
-                        #             tempArray.append(fc[0])
-                        #             tempArray.append(fc[1])
-                        #         dictOfFileWords["words"].update({v[0]:tempArray})
-                        #     while lastWord[0] == word[0] and index < len(arrayOfWords):
-                        #         #word exists in existed file?
-                        #         if dictOfFileWords["words"].get(word):
-                        #             if mapperFile.split("&")[0] in dictOfFileWords["words"].get(word):
-                        #                 indexInArray = dictOfFileWords["words"].get(word).index(mapperFile.split("&")[0])
-                        #                 dictOfFileWords["words"][word][indexInArray+1] = int(dictOfFileWords["words"][word][indexInArray+1]) + int(list(arrayOfWords[index].values())[0])
-                        #             else:
-                        #                 #Yes, add to the array list the name of the file that are being read and the count
-                        #                 y = dictOfFileWords["words"].get(word)
-                        #                 #Append the name of the file
-                        #                 y.append(mapperFile.split("&")[0])
-                        #                 #Append the count of the word
-                        #                 y.append(list(arrayOfWords[index].values())[0])
-                        #                 dictOfFileWords["words"].update({word:y})
-                        #         else:
-                        #             dictOfFileWords["words"].update({word:[mapperFile.split("&")[0],list(arrayOfWords[index].values())[0]]})
-                        #         index+=1
-                        #         if index >= len(arrayOfWords):
-                        #             break
-                        #         lastWord = word
-                        #         word = list(arrayOfWords[index].keys())[0]
-                        #     f.close()
-                        #     f = open(fileToWrite,"w")
-                        #     for item,array in dictOfFileWords["words"].items():
-                        #         filesAndCount = ''
-                        #         i = 0
-                        #         while i < len(array):
-                        #             filesAndCount+=array[i] + ":" + str(array[i+1]) + ","
-                        #             i+=2
-                        #         filesAndCount = filesAndCount[:-1] + '\n'
-                        #         #word + ' ' + arrays
-                        #         line = item + ' ' + filesAndCount
-                        #         f.write(line)
+                        # File is not empty. We should load the file and update
+                        # older words or add new ones
+                        else:
+                            lastWord = word
+                            f = open(fileToWrite, "r")
+                            # Read all document starting with the same letter
+                            # as word[0]
+                            dictOfFileWords = {"words": {}}
+                            for data in f:
+                                v = data.strip().split(" ")
+                                # pdb.set_trace()
+                                filesAndCount = v[1].split(",")
+                                tempArray = []
+                                for j in filesAndCount:
+                                    fc = j.split(":")
+                                    tempArray.append(fc[0])
+                                    tempArray.append(fc[1])
+                                dictOfFileWords["words"].update(
+                                    {v[0]: tempArray})
+                            while lastWord[0] == word[0] and index < len(arrayOfWords):
+                                # word exists in existed file?
+                                if dictOfFileWords["words"].get(word):
+                                    if mapperFile.split("&")[0] in dictOfFileWords["words"].get(word):
+                                        indexInArray = dictOfFileWords["words"].get(
+                                            word).index(mapperFile.split("&")[0])
+                                        dictOfFileWords["words"][word][indexInArray + 1] = int(dictOfFileWords["words"][
+                                            word][indexInArray + 1]) + int(list(arrayOfWords[index].values())[0])
+                                    else:
+                                        # Yes, add to the array list the name
+                                        # of the file that are being read and
+                                        # the count
+                                        y = dictOfFileWords["words"].get(word)
+                                        # Append the name of the file
+                                        y.append(mapperFile.split("&")[0])
+                                        # Append the count of the word
+                                        y.append(
+                                            list(arrayOfWords[index].values())[0])
+                                        dictOfFileWords[
+                                            "words"].update({word: y})
+                                else:
+                                    dictOfFileWords["words"].update(
+                                        {word: [mapperFile.split("&")[0], list(arrayOfWords[index].values())[0]]})
+                                index += 1
+                                if index >= len(arrayOfWords):
+                                    break
+                                lastWord = word
+                                word = list(arrayOfWords[index].keys())[0]
+                            f.close()
+                            f = open(fileToWrite, "w")
+                            for item, array in dictOfFileWords["words"].items():
+                                filesAndCount = ''
+                                i = 0
+                                while i < len(array):
+                                    filesAndCount += array[i] + \
+                                        ":" + str(array[i + 1]) + ","
+                                    i += 2
+                                filesAndCount = filesAndCount[:-1] + '\n'
+                                # word + ' ' + arrays
+                                line = item + ' ' + filesAndCount
+                                f.write(line)
         builder = MessageBuilder(messages=[])
         builder.add_reduce_complete_message(
             self.host, self.port, task_obj.get("task_id"))
@@ -324,10 +359,12 @@ class IndexMasterNode(MasterNode):
     RUNNING = 7
     FINISHED = 8
 
-    def __init__(self, host, port, worker_num, index):
+    def __init__(self, host, port, worker_num, index, map_dir, red_dir):
         super(IndexMasterNode, self).__init__(host, port, worker_num)
 
         self.index_dir = index
+        self.map_dir = map_dir
+        self.red_dir = red_dir
         # Handles iterating through job stages
         self.curr_job = self.PARTIOINING  # Partition or Map or Reduce
         self.job_status = self.NOT_STARTED
@@ -347,7 +384,7 @@ class IndexMasterNode(MasterNode):
 
     def master_bg(self):
         while True:
-
+            # print(self.reduce_taskmap)
             if self.index_files is None and self.curr_job == self.PARTIOINING:
                 # Can begin index partitioning work
                 self.index_files = self.populateArrayOfFilesAndSize(
@@ -362,20 +399,18 @@ class IndexMasterNode(MasterNode):
                         'Starting MAP++++++++ Index Files For Worker Nodes Map Tasks')
                     self.job_status = self.IN_PROGRESS
                     self.distributeJobToMappers(self.index_files)
-                    self.curr_job = self.REDUCE
-                    self.job_status = self.NOT_STARTED
 
                 if self.curr_job == self.REDUCE and self.job_status == self.NOT_STARTED:
-                    pass
-                    # logger.info(
-                    #     'Starting REDUCE++++++++ Index Files For Worker Nodes Reduce Tasks')
-                    # self.job_status = self.IN_PROGRESS
+                    logger.info(
+                        'Starting REDUCE++++++++ Index Files For Worker Nodes Reduce Tasks')
+                    self.job_status = self.IN_PROGRESS
                     # self.distributeJobToReducers(os.path.join(
                     #     os.path.dirname(__file__), 'indexer/map'))
-                    # self.job_status = self.COMPLETED
+                    self.distributeJobToReducers(self.map_dir)
 
                 if self.curr_job == self.REDUCE and self.job_status == self.NOT_STARTED:
                     logger.info('Updating pointing index directory')
+
         return
 
     def handle_request(self, conn, addr, received):
@@ -386,14 +421,13 @@ class IndexMasterNode(MasterNode):
         received = received.decode("utf-8")
         parser = MessageParser()
         parsed = parser.parse(received)
-
         if parsed.action == 'map' and parsed.status == 'complete':
             task_id = parsed.taskid
             self.map_taskmap.remove(task_id)
 
             # Check to see if all map jobs are clear and can start reduce phase
             if len(self.map_taskmap) == 0:
-                self.curr_status = self.REDUCE
+                self.curr_job = self.REDUCE
                 self.job_status = self.NOT_STARTED
                 logger.info('FINISHED MAP+++++++')
 
@@ -404,7 +438,7 @@ class IndexMasterNode(MasterNode):
             # Check to see if all reduce jobs are clear and can start reduce
             # phase
             if len(self.reduce_taskmap) == 0:
-                self.curr_status = self.COMPLETE
+                self.curr_job = self.COMPLETE
                 self.job_status = self.NOT_STARTED
                 logger.info('FINISHED REDUCE+++++++')
 
@@ -427,7 +461,6 @@ class IndexMasterNode(MasterNode):
             f.close()
             arrayOfFilesAndSize = np.append(
                 arrayOfFilesAndSize, [{pathToFile: lines}])
-        logger.info("Index Files Found: %r" % arrayOfFilesAndSize)
         return arrayOfFilesAndSize
 
     def distributeJobToMappers(self, arrayOfDictionariesOfFilesPaths):
@@ -440,7 +473,6 @@ class IndexMasterNode(MasterNode):
         worker_keys = list(self.worker_conns.keys())
         builder = MessageBuilder(messages=[])
         for i in arrayOfDictionariesOfFilesPaths:
-            print("I am printing IIIIII", i)
             count += 1
             k = i
             fi = list(k.keys())[0]
@@ -475,16 +507,12 @@ class IndexMasterNode(MasterNode):
         print(self.num_workers)
         letterPerWorker = math.ceil((26 / self.num_workers))
         worker_keys = list(self.worker_conns.keys())
-        dire = os.path.join(os.path.dirname(
-            os.path.abspath(__name__)), 'indexer/map/')
+        # dire = os.path.join(os.path.dirname(
+        #     os.path.abspath(__name__)), 'indexer/map/')
+        dire = self.map_dir
         count = 0
-        # for directory in files:
-
-        # filesDirectory = os.listdir(os.path.join(path,directory))
-        # for iFile in filesDirectory:
         y = 0
         worker, letters = 0, 26
-        # pathToSend = os.path.join(dire,directory + '/' + iFile)
         pathToSend = 'empty'
         while (letters - letterPerWorker) > 0:
             k = y
@@ -494,8 +522,6 @@ class IndexMasterNode(MasterNode):
                 self.host, self.port, task_id, pathToSend, k, y)
             message = builder.build()
             builder.clear()
-            #print("sending to worker", worker)
-            # print(message.outb)
             worker_conn = self.worker_conns[worker_keys[worker]]
             worker_conn.send(message.outb)
             letters -= letterPerWorker
@@ -531,17 +557,42 @@ class IndexCluster:
 
     def setup_index_dir(self):
         # Create temp directory for map jobs
-        self.index_map = os.path.join(os.path.dirname(__file__), 'indexer/map')
+        index_root = os.path.join(os.path.dirname(__file__), 'indexer_1')
+        if os.path.exists(index_root):
+            # check to see if index update file exists
+            up_file = os.path.join(index_root, "updated.txt")
+            if os.path.exists(up_file):
+                with open(up_file, "r") as up_filep:
+                    # read line
+                    old_indx = up_filep.readline().strip()
+                    basename = os.path.basename(old_indx).split("_")
+                    last_int = str(int(basename[-1]) + 1)
+                    new_index = "indexer_" + last_int
+            else:
+                new_index = "indexer_2"
+
+            up_filep = open(up_file, "w+")
+            index_root = os.path.abspath(os.path.join(
+                os.path.dirname(__file__), new_index))
+            up_filep.write(index_root)
+        else:
+            pathlib.Path(index_root).mkdir(exist_ok=True)
+        # self.index_map = os.path.join(os.path.dirname(__file__),
+        # 'indexer/map')
+        self.index_map = os.path.join(index_root, 'map')
         # shutil.rmtree(self.index_map, ignore_errors=True)
         if not os.path.exists(self.index_map):
             pathlib.Path(self.index_map).mkdir(parents=True, exist_ok=True)
+        else:
+            pathlib.Path(self.index_map).mkdir(parents=True, exist_ok=True)
 
         # Create directory for reduce job and inverted index
-        self.index_reduce = os.path.join(
-            os.path.dirname(__file__), 'indexer/reducers')
+        # self.index_reduce = os.path.join(
+        #     os.path.dirname(__file__), 'indexer/reducers')
+        self.index_reduce = os.path.join(index_root, 'reduce')
         # shutil.rmtree(self.index_reduce, ignore_errors=True)
-        if not os.path.exists(self.index_reduce):
-            pathlib.Path(self.index_reduce).mkdir(parents=True, exist_ok=True)
+        # if not os.path.exists(self.index_reduce):
+        pathlib.Path(self.index_reduce).mkdir(parents=True, exist_ok=True)
 
     def start(self):
         nodes = []
@@ -551,7 +602,7 @@ class IndexCluster:
 
         # Create Master Node and start process
         master = IndexMasterNode(self.master_addr[0], self.master_addr[
-                                 1], self.worker_num, self.index_dir)
+            1], self.worker_num, self.index_dir, self.index_map, self.index_reduce)
         nodes.append(master)
         master.start()
 
