@@ -117,7 +117,7 @@ class IndexWorkerNode(WorkerNode):
         input_mapper_file = os.path.join(input_file_dir, map_file_name)
         finalArray = []
         try:
-            fp = open(task_obj.get("dir"), 'r')
+            fp = open(task_obj.get("dir"), 'r', encoding="ISO-8859-1")
         except:
             fp = open(task_obj.get("dir"), 'r', encoding="utf-8")
 
